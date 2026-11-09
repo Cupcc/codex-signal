@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "round": "02",
+  "nativeViewport": "1440x900",
+  "candidates": [
+    {
+      "id": "relay",
+      "source": "01-relay.html",
+      "name": "伙伴接力",
+      "concept": "让当前最需要你的任务，带着一只小伙伴来到面前。",
+      "typography": "系统中文字体 · 22px 请求标题 · 14px 主动作",
+      "palette": [
+        "#131517",
+        "#EDF0E9",
+        "#DFB977"
+      ],
+      "traits": [
+        "单任务聚焦",
+        "96px 圆润伙伴",
+        "一句话语音"
+      ]
+    },
+    {
+      "id": "inbox",
+      "source": "02-inbox.html",
+      "name": "会话伙伴岛 · 已选",
+      "concept": "沿用 CodeIsland 会话列表，同时看清所有伙伴的进度。",
+      "typography": "系统中文字体 · 14px 会话正文 · 来源徽标",
+      "palette": [
+        "#0C0D0F",
+        "#191B1E",
+        "#E4B978"
+      ],
+      "traits": [
+        "最接近原项目",
+        "纵向会话列表",
+        "待处理优先"
+      ]
+    },
+    {
+      "id": "dock",
+      "source": "03-dock.html",
+      "name": "项目泊位",
+      "concept": "每个项目一个固定位置，每位伙伴一个明确状态。",
+      "typography": "系统中文字体 · 18px 项目名 · 14px 任务",
+      "palette": [
+        "#080A09",
+        "#193F35",
+        "#C4D8C9"
+      ],
+      "traits": [
+        "固定项目位置",
+        "横向三泊位",
+        "共享详情与动作"
+      ]
+    }
+  ],
+  "selection": {
+    "id": "inbox",
+    "confirmedAt": "2026-11-09",
+    "note": "用户改选 B 会话伙伴岛，明确不选 C。"
+  }
+}

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>03 / DOCK — 项目泊位</title>
+  <style>
+    :root{--moss:#E8EEE8;--forest:#193F35;--edge:#B3C9B9;--amber:#D5AA65;--ink:#213D34;--muted:#6B7A70;--mono:"SFMono-Regular","SF Mono",Menlo,monospace;--sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB",sans-serif}
+    *{box-sizing:border-box}html,body{margin:0;width:1440px;height:900px;overflow:hidden}body{font-family:var(--sans);background:#F6F7F3;color:var(--ink);-webkit-font-smoothing:antialiased}button{font:inherit;border:0;cursor:default}svg{display:block}button:focus-visible{outline:2px solid var(--forest);outline-offset:4px}
+    .board{position:relative;width:1440px;height:900px;overflow:hidden}.page-head{position:absolute;left:48px;top:32px;right:48px}.eyebrow{font:11px/16px var(--mono);letter-spacing:2px;color:#65796C}.page-title{margin:9px 0 8px;font-size:30px;line-height:38px;font-weight:600;letter-spacing:-.6px}.page-description{margin:0;font-size:14px;line-height:22px;color:#6B776F}.page-index{position:absolute;right:0;top:4px;display:flex;align-items:center;gap:10px;font:11px/16px var(--mono);letter-spacing:.6px;color:#7A867E}.swatch{width:12px;height:12px;background:var(--forest);border-radius:50%}.swatch.pale{background:#111513;margin-left:-5px}
+    .desktop{position:absolute;left:48px;top:156px;width:1344px;height:648px;overflow:hidden;border:1px solid #D4DCD4;border-radius:16px;background:linear-gradient(132deg,#CCD6C9 0%,#DEE3D8 49%,#BBCBBC 100%)}.desktop:before{content:"";position:absolute;left:-110px;bottom:-520px;width:1100px;height:850px;border:1px solid rgba(255,255,255,.18);border-radius:50%;background:rgba(246,248,240,.1);transform:rotate(-20deg)}
+    .menu-bar{height:32px;position:absolute;top:0;left:0;right:0;background:rgba(237,243,232,.43);display:flex;align-items:center;justify-content:space-between;padding:0 19px;color:#455549;font-size:11px;line-height:16px;z-index:1}.menu-left,.menu-right{display:flex;align-items:center;gap:19px}.menu-left strong{font-weight:600}.apple{font-size:17px;line-height:1}.menu-right{gap:14px;font-size:11px}.battery{width:20px;height:10px;border:1px solid #5F6F61;border-radius:3px;position:relative}.battery:before{content:"";position:absolute;left:2px;top:2px;width:13px;height:4px;background:#5F6F61;border-radius:1px}.battery:after{content:"";position:absolute;right:-3px;top:2px;width:1px;height:4px;background:#5F6F61}
+    .notch{position:absolute;z-index:5;left:calc(50% - 95px);top:-1px;width:190px;height:32px;background:#101311;border-radius:0 0 11px 11px}
+    .editor{position:absolute;left:76px;top:112px;width:1192px;height:486px;overflow:hidden;border:1px solid rgba(74,96,77,.19);border-radius:10px;background:#E9EDE5;box-shadow:0 17px 34px rgba(54,76,54,.08);color:#889388}.editor-header{height:38px;border-bottom:1px solid #DBE1D8;background:#E2E7DE;display:flex;align-items:center;padding:0 14px;font-size:11px}.window-buttons{display:flex;gap:7px}.window-buttons i{display:block;width:9px;height:9px;background:#C1CABB;border:1px solid #B4C0B0;border-radius:50%}.editor-label{position:absolute;left:166px;font-size:11px;color:#859080}.branch{margin-left:auto;font:10px var(--mono);color:#8E998C;display:flex;gap:7px;align-items:center}.editor-layout{display:flex;height:425px}.sidebar{width:182px;flex-shrink:0;border-right:1px solid #DBE2D7;background:#E3E9DF;padding:20px 15px}.sidebar-label{font:9px/18px var(--mono);letter-spacing:1px;margin-bottom:13px;color:#8D9A8C}.file{height:29px;display:flex;align-items:center;gap:9px;font-size:11px;padding:0 7px}.file.indent{padding-left:21px}.file.active{background:#D8E2D3;border-radius:4px;color:#81927D}.file .folder{width:10px;height:8px;border:1px solid #A4B09F;border-radius:1px}.file .document{width:7px;height:9px;border:1px solid #A6B19F;border-radius:1px}.code-area{position:relative;width:710px;padding:24px 27px;background:#EDF0E9}.code-tab{height:27px;position:absolute;top:0;left:0;right:0;border-bottom:1px solid #E1E5DD;font:10px/27px var(--mono);padding-left:18px;color:#99A392}.code{padding-top:14px;font:11px/25px var(--mono);white-space:pre;color:#A0AA99}.code .line-number{display:inline-block;width:34px;color:#BBC2B5;text-align:right;margin-right:22px}.code .keyword{color:#91A28B}.code .text{color:#9EA58F}.editor-side{flex:1;border-left:1px solid #DDE4D8;padding:25px 22px;color:#98A28F}.side-title{font:10px/18px var(--mono);letter-spacing:.7px;border-bottom:1px solid #D9E2D4;padding-bottom:13px}.side-item{margin-top:20px;font-size:11px;line-height:20px}.side-item .line{height:5px;background:#D8E0D1;margin-top:9px;border-radius:2px}.side-item .line.short{width:70%}.tiny-dot{width:5px;height:5px;border:1px solid #A9B89E;display:inline-block;border-radius:50%;margin-right:7px}.editor-bottom{height:23px;position:absolute;bottom:0;left:0;right:0;border-top:1px solid #DCE3D8;background:#E3E9DF;font:9px/23px var(--mono);display:flex;justify-content:space-between;padding:0 14px;color:#98A28F}
+    .signal{position:absolute;left:275px;top:-1px;width:792px;height:310px;z-index:3;background:#080A09;border:1px solid #1F2721;border-top:0;border-radius:0 0 22px 22px;box-shadow:0 20px 40px rgba(17,34,23,.24),0 2px 6px rgba(8,18,11,.1);overflow:hidden;color:#EFF2EE}.signal-top{height:64px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 18px 10px}.signal-name{font-size:12px;font-weight:500;letter-spacing:.3px;color:#BCC6BD}.signal-name span{font:10px var(--mono);color:#7F8D81;margin-left:10px}.voice{display:flex;gap:7px;align-items:center;color:#B2BEB5;font-size:11px;background:none;padding:0}.voice-icon{width:23px;height:23px;display:grid;place-items:center;background:#1C211E;border:1px solid #2C342E;border-radius:50%}.voice svg{width:13px;height:13px}
+    .berths{display:grid;grid-template-columns:1fr 1fr 1fr;height:150px;border-top:1px solid #2C352E;border-bottom:1px solid #313A32;margin:0 12px}.berth{position:relative;padding:13px 15px 12px;border-right:1px solid #303A32;color:#EBEFE9;background:#111512}.berth:last-child{border-right:0}.berth-top{display:flex;align-items:center;justify-content:space-between;font:10px/14px var(--mono);letter-spacing:.4px;color:#829487}.berth-top .source{font-family:var(--sans);font-size:10px;line-height:16px;letter-spacing:.2px;color:#ACB8AD;background:#232B25;border:1px solid #354036;padding:0 5px;border-radius:3px}.berth-identity{display:flex;align-items:center;gap:7px;margin-top:4px}.dex{width:64px;height:64px;flex:0 0 64px;image-rendering:auto;object-fit:contain}.identity-copy{min-width:0}.berth h2{font-size:18px;line-height:25px;letter-spacing:-.5px;font-weight:550;margin:0 0 3px}.session-title{font-size:14px;line-height:20px;color:#A3B0A5;white-space:nowrap}.event-line{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:13px;line-height:18px;color:#B9C4BA}.event-line time{margin-left:auto;color:#85998A;font-size:11px;white-space:nowrap}.event-mark{width:5px;height:5px;background:#88998C;border-radius:1px;flex:0 0 5px}.event-mark.running{background:transparent;border:1px solid #9BB6A1;border-radius:50%}.selected{background:var(--forest);border-right-color:var(--forest);box-shadow:inset 0 0 0 1.5px #C4D8C9;color:#F4F7F1;z-index:1}.selected .berth-top{color:#C0D4C6}.selected .source{color:#D1DFD4;border-color:#658472;background:#284D3E}.selected h2{color:#F3F6EF}.selected .session-title{color:#C1D3C5}.selected .event-line{color:#E7BE7A}.selected .event-line time{color:#C2D2C3}.selected .event-mark{background:var(--amber);border-radius:50%}.selected-label{display:inline-block;margin-left:7px;padding:0 4px;border-radius:2px;background:#D8E7DC;color:#193F35;font:9px/14px var(--sans);letter-spacing:0}.selection-mark{position:absolute;bottom:-4px;left:calc(50% - 4px);width:8px;height:8px;background:#C4D8C9;transform:rotate(45deg);z-index:1}
+    .detail{height:96px;padding:18px 28px;display:flex;justify-content:space-between;align-items:center}.detail-eyebrow{font-size:11px;line-height:14px;letter-spacing:.2px;color:#8CA391;display:flex;gap:8px;align-items:center}.detail-eyebrow .slash{color:#4A5D4E}.detail-eyebrow .session-id{font-family:var(--mono)}.detail-text{display:flex;align-items:baseline;gap:17px;margin-top:7px}.detail-title{font-size:16px;line-height:22px;font-weight:550;margin:0;color:#EEF3EA}.detail-wait{font-size:12px;line-height:18px;color:#A7B8A9;white-space:nowrap}.actions{display:flex;align-items:center;padding-top:5px}.primary{display:flex;align-items:center;justify-content:center;gap:15px;height:38px;padding:0 16px;background:#E8EEE8;color:#163B2D;font-size:14px;line-height:20px;border-radius:6px;font-weight:550;white-space:nowrap;border:1px solid #F5F8F2}.primary svg{width:14px;height:14px}
+    .specs{position:absolute;left:48px;right:48px;top:830px;display:flex;align-items:center;justify-content:space-between;color:#68796C;font-size:12px;line-height:20px}.spec-left,.spec-right{display:flex;gap:20px;align-items:center}.spec-label{font:10px/18px var(--mono);letter-spacing:1px;color:#89968B}.spec-divider{width:1px;height:12px;background:#CDD7CA}.spec-right{color:#758672;font-size:11px}.spec-right strong{font-weight:500;color:#43634C}
+  .spec-label{color:#68776b!important}</style>
+</head>
+<body>
+  <main class="board" aria-label="项目泊位设计方向，1440 × 900 画板">
+    <header class="page-head">
+      <div class="eyebrow">03 / DOCK</div>
+      <h1 class="page-title">项目泊位</h1>
+      <p class="page-description">每个项目一个位置，每位伙伴一个状态。</p>
+      <div class="page-index"><span class="swatch pale"></span><span class="swatch"></span><span>历史对照 C · 未采用 / 圆润伙伴</span></div>
+    </header>
+    <section class="desktop" aria-label="macOS 桌面场景">
+      <div class="menu-bar" aria-hidden="true">
+        <div class="menu-left"><span class="apple"></span><strong>Codex</strong><span>文件</span><span>编辑</span><span>显示</span><span>窗口</span></div>
+        <div class="menu-right"><svg width="13" height="11" viewBox="0 0 13 11" fill="none"><path d="M1 3.4a8.5 8.5 0 0 1 11 0M3.1 5.7a5.2 5.2 0 0 1 6.8 0M5.3 8a1.8 1.8 0 0 1 2.4 0" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="6.5" cy="10" r=".7" fill="currentColor"/></svg><span class="battery"></span><span>周一 10:42</span></div>
+      </div>
+      <div class="editor" aria-hidden="true">
+        <div class="editor-header"><div class="window-buttons"><i></i><i></i><i></i></div><span class="editor-label">atlas-web</span><span class="branch">⑂ feature / checkout</span></div>
+        <div class="editor-layout">
+          <aside class="sidebar"><div class="sidebar-label">ATLAS WEB</div><div class="file"><i class="folder"></i>src</div><div class="file indent"><i class="folder"></i>components</div><div class="file indent"><i class="folder"></i>checkout</div><div class="file indent active"><i class="document"></i>checkout.tsx</div><div class="file indent"><i class="document"></i>summary.tsx</div><div class="file"><i class="folder"></i>styles</div><div class="file"><i class="folder"></i>tests</div><div class="file"><i class="document"></i>package.json</div></aside>
+          <div class="code-area"><div class="code-tab">checkout.tsx</div><div class="code"><span class="line-number">12</span><span class="keyword">export function</span> Checkout() {
+<span class="line-number">13</span>  <span class="keyword">const</span> { items, total } = useCart();
+<span class="line-number">14</span>
+<span class="line-number">15</span>  <span class="keyword">return</span> (
+<span class="line-number">16</span>    &lt;CheckoutLayout&gt;
+<span class="line-number">17</span>      &lt;Section title=<span class="text">"订单信息"</span>&gt;
+<span class="line-number">18</span>        &lt;OrderItems items={items} /&gt;
+<span class="line-number">19</span>      &lt;/Section&gt;
+<span class="line-number">20</span>
+<span class="line-number">21</span>      &lt;OrderSummary
+<span class="line-number">22</span>        total={total}
+<span class="line-number">23</span>        onContinue={handleContinue}
+<span class="line-number">24</span>      /&gt;
+<span class="line-number">25</span>    &lt;/CheckoutLayout&gt;
+<span class="line-number">26</span>  );
+<span class="line-number">27</span>}</div></div>
+          <aside class="editor-side"><div class="side-title">WORKSPACE</div><div class="side-item"><span class="tiny-dot"></span>优化结账流程<div class="line"></div><div class="line short"></div></div><div class="side-item">最近修改<div class="line short"></div><div class="line"></div><div class="line short"></div></div></aside>
+        </div>
+        <div class="editor-bottom"><span>main &nbsp; · &nbsp; atlas-web</span><span>UTF-8 &nbsp;&nbsp; TypeScript JSX &nbsp;&nbsp; Ln 18, Col 24</span></div>
+      </div>
+      <section class="signal" aria-label="Codex Signal 项目泊位">
+        <header class="signal-top"><div class="signal-name">项目泊位<span>3 个项目 · 2 条待查看</span></div><button type="button" class="voice" aria-label="全局声音，当前已开启"><span class="voice-icon"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M7 3 3.5 5.7H1.8v4.6h1.7L7 13V3Z" stroke="currentColor" stroke-linejoin="round"/><path d="M10 5.5a3.8 3.8 0 0 1 0 5M12 3.5a6.4 6.4 0 0 1 0 9" stroke="currentColor" stroke-linecap="round"/></svg></span><span>语音已开</span></button></header>
+        <div class="berths">
+          <article class="berth" aria-label="Atlas 网站，本轮已结束">
+            <div class="berth-top"><span>01 / AT</span><span class="source">桌面</span></div>
+            <div class="berth-identity"><img class="dex" src="../assets/toy-idle.svg" alt="休息中的 团团" width="64" height="64"><div class="identity-copy"><h2>Atlas 网站</h2><div class="session-title">优化结账流程</div></div></div>
+            <div class="event-line"><span class="event-mark"></span><span>本轮已结束</span><time>刚刚</time></div>
+          </article>
+          <article class="berth selected" aria-label="已选中 API 服务，需要审批，等候 2 分钟">
+            <div class="berth-top"><span>02 / AP<span class="selected-label">已选</span></span><span class="source">CLI</span></div>
+            <div class="berth-identity"><img class="dex" src="../assets/toy-attention.svg" alt="等待关注的 团团" width="64" height="64"><div class="identity-copy"><h2>API 服务</h2><div class="session-title">确认数据库迁移</div></div></div>
+            <div class="event-line"><span class="event-mark"></span><span>需要审批</span><time>等候 2 分钟</time></div><span class="selection-mark" aria-hidden="true"></span>
+          </article>
+          <article class="berth" aria-label="设计系统，运行中">
+            <div class="berth-top"><span>03 / DS</span><span class="source">桌面</span></div>
+            <div class="berth-identity"><img class="dex" src="../assets/toy-working.svg" alt="工作中的 团团" width="64" height="64"><div class="identity-copy"><h2>设计系统</h2><div class="session-title">检查组件</div></div></div>
+            <div class="event-line"><span class="event-mark running"></span><span>运行中</span></div>
+          </article>
+        </div>
+        <div class="detail">
+          <div><div class="detail-eyebrow"><span>API 服务</span><span class="slash">/</span><span class="session-id">会话 02</span></div><div class="detail-text"><h3 class="detail-title">确认数据库迁移</h3><span class="detail-wait">等待你查看 · 等候 2 分钟</span></div></div>
+          <div class="actions"><button type="button" class="primary">查看会话<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+        </div>
+      </section>
+      <div class="notch" aria-hidden="true"></div>
+    </section>
+    <footer class="specs"><div class="spec-left"><span class="spec-label">C / SPATIAL MEMORY</span><span class="spec-divider"></span><span>固定三泊位</span><span>圆润状态伙伴</span><span>共享会话动作</span></div><div class="spec-right"><strong>792 × 310</strong><span>CodeIsland 黑色外壳</span><span>64px 玩偶</span><span>项目顺序保持稳定</span></div></footer>
+  </main>
+<script src="../assets/mascot-art.js"></script><script src="../assets/mascot-motion.js"></script></body>
+</html>

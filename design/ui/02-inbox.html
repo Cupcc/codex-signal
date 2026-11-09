@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Codex Signal · 会话伙伴岛</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 1440px; height: 900px; margin: 0; overflow: hidden; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; -webkit-font-smoothing: antialiased; color: #272c32; }
+    button { font: inherit; cursor: default; }
+    .board { width: 1440px; height: 900px; position: relative; background: #f5f6f7; }
+    .page-head { position: absolute; left: 48px; right: 48px; top: 34px; display: flex; align-items: flex-end; justify-content: space-between; }
+    .eyebrow { margin: 0 0 10px; color: #78808a; font-size: 11px; letter-spacing: 2px; font-weight: 650; }
+    .page-title { font-size: 32px; font-weight: 580; letter-spacing: -1.2px; margin: 0; line-height: 1.3; }
+    .page-description { color: #78818a; font-size: 14px; margin: 0 0 5px; letter-spacing: .15px; }
+    .scene { position: absolute; left: 48px; top: 156px; width: 1344px; height: 648px; overflow: hidden; border-radius: 18px; background: linear-gradient(145deg, #607885, #455e71 46%, #59647f); box-shadow: 0 1px 0 #fff, inset 0 0 0 1px #536878; }
+    .wallpaper { position: absolute; width: 1000px; height: 700px; left: 620px; top: 250px; border-radius: 40%; transform: rotate(-25deg); background: linear-gradient(150deg, #647c8a80, #67728d60); box-shadow: -80px -50px 80px #73889920; }
+    .menubar { position: absolute; top: 0; left: 0; right: 0; height: 32px; padding: 0 22px; display: flex; align-items: center; justify-content: space-between; background: #3c52644d; color: #dce4eb; font-size: 12px; }
+    .menu-left, .menu-right { display: flex; align-items: center; gap: 21px; }
+    .menu-right { gap: 15px; }
+    .menu-left strong { font-weight: 600; }
+    .menu-icon { width: 14px; height: 15px; }
+    .workspace { position: absolute; left: 92px; right: 92px; top: 107px; height: 483px; border-radius: 11px; background: #d3dee31f; border: 1px solid #d7e6ed24; overflow: hidden; box-shadow: 0 14px 38px #263e521c; }
+    .workspace-bar { display: flex; align-items: center; height: 42px; padding: 0 15px; border-bottom: 1px solid #c6d9e518; background: #d0dee80a; }
+    .window-dots { display: flex; gap: 7px; }
+    .window-dots i { width: 9px; height: 9px; border-radius: 50%; background: #94a4ae; opacity: .7; }
+    .workspace-title { font-size: 12px; color: #a0b0bb; margin-left: 320px; }
+    .workspace-content { display: flex; height: calc(100% - 42px); filter: blur(.6px); opacity: .36; }
+    .sidebar { width: 191px; flex-shrink: 0; padding: 25px 23px; border-right: 1px solid #c1d1dc2b; color: #bac8d1; background: #c2d2dc07; }
+    .sidebar h3 { font-size: 10px; font-weight: 500; letter-spacing: 1.1px; margin: 0 0 25px; }
+    .sidebar p { margin: 0 0 21px; font-size: 12px; display: flex; gap: 10px; align-items: center; }
+    .sidebar p::before { content: ""; width: 8px; height: 10px; border: 1px solid #bdcad3; border-radius: 1px; }
+    .editor { flex: 1; padding: 23px 30px; }
+    .editor-tabs { height: 32px; font-size: 12px; color: #bdcbd5; border-bottom: 1px solid #c3cfd920; margin-bottom: 26px; }
+    .code-line { display: flex; align-items: center; height: 26px; gap: 25px; }
+    .line-number { font-size: 10px; width: 16px; text-align: right; color: #a9b6c0; }
+    .code { display: flex; gap: 8px; align-items: center; }
+    .code i { height: 6px; border-radius: 2px; background: #c0cdd9; display: block; }
+    .code i:nth-child(2n) { background: #aebecb; }
+    .code i:nth-child(3n) { background: #b3c9cb; }
+    .indent { padding-left: 20px; }
+    .indent-2 { padding-left: 40px; }
+    .editor-bottom { margin-top: 27px; border-top: 1px solid #c4cfd927; padding-top: 16px; font-size: 11px; color: #b9c7d1; }
+    .island { position: absolute; top: 0; left: 322px; width: 700px; height: 432px; background: #0c0d0f; color: #f0f0f2; border-radius: 0 0 26px 26px; box-shadow: 0 24px 46px #17212f55, 0 6px 14px #101a2c22; z-index: 4; font-size: 14px; }
+    .camera-clearance { position: absolute; left: 255px; top: 0; width: 190px; height: 32px; background: #08090b; border-radius: 0 0 12px 12px; }
+    .camera-clearance::after { content: ""; position: absolute; right: 18px; top: 10px; width: 5px; height: 5px; border-radius: 50%; background: #17232c; box-shadow: 0 0 0 2px #10151b; }
+    .island-toolbar { height: 86px; padding: 37px 20px 13px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    .brand { display: flex; gap: 8px; align-items: center; font-size: 14px; font-weight: 570; color: #dfe1e5; white-space: nowrap; }
+    .brand svg { width: 20px; height: 20px; color: #8e959f; }
+    .filters { display: flex; gap: 2px; align-items: center; padding: 3px; height: 32px; border: 1px solid #292b30; border-radius: 8px; background: #151619; margin-right: 62px; }
+    .filter { background: transparent; color: #a5a9b2; border: none; border-radius: 5px; font-size: 13px; padding: 4px 12px; height: 24px; display: flex; align-items: center; gap: 6px; }
+    .filter.selected { color: #e2e3e6; background: #2a2c31; box-shadow: 0 1px 2px #0002; }
+    .filter-count { color: #b0b4bd; font-size: 13px; }
+    .sound { display: flex; gap: 7px; align-items: center; color: #90949e; font-size: 13px; background: transparent; border: 0; padding: 6px 0; white-space: nowrap; }
+    .sound svg { width: 16px; height: 16px; }
+    .sessions { display: flex; flex-direction: column; gap: 8px; margin: 0 14px; }
+    .session { position: relative; background: #191b1e; border-radius: 12px; display: flex; gap: 15px; padding: 15px 18px; overflow: hidden; }
+    .session::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; background: #4e5259; border-radius: 0 2px 2px 0; }
+    .attention { height: 132px; background: #1c1c1f; }
+    .attention::before { background: #dda168; }
+    .finished, .working { height: 76px; }
+    .working::before { background: #66ad9c; }
+    .dex { width: 56px; height: 56px; object-fit: contain; image-rendering: auto; flex: 0 0 56px; }
+    .attention .dex { margin-top: 3px; }
+    .session-body { flex: 1; min-width: 0; }
+    .session-top { display: flex; align-items: center; height: 20px; gap: 9px; }
+    .project { font-size: 15px; font-weight: 580; letter-spacing: -.1px; margin: 0; }
+    .source { font-size: 13px; color: #a5a9b2; border: 1px solid #383a40; border-radius: 4px; padding: 1px 5px; line-height: 16px; display: inline-flex; align-items: center; gap: 5px; }
+    .source svg { width: 12px; height: 12px; }
+    .event-time { margin-left: auto; font-size: 13px; color: #a0a5af; font-variant-numeric: tabular-nums; }
+    .status { font-size: 13px; display: inline-flex; align-items: center; gap: 5px; color: #9599a2; }
+    .status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+    .attention .status { color: #e2a56e; }
+    .working .status { color: #79b7a8; }
+    .session-detail { margin-top: 9px; display: flex; gap: 13px; align-items: center; }
+    .session-task { font-size: 14px; color: #b4b7be; line-height: 20px; }
+    .attention .session-task { font-size: 16px; font-weight: 500; color: #e2e2e5; }
+    .detail-separator { height: 11px; width: 1px; background: #3d4046; }
+    .attention-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 9px; }
+    .attention-note { color: #a4a7b0; font-size: 13px; }
+    .primary { height: 36px; min-width: 120px; display: flex; align-items: center; justify-content: center; gap: 9px; border-radius: 7px; background: #e5e6e8; border: 1px solid #e8e9eb; color: #282a30; font-size: 14px; font-weight: 560; }
+    .primary svg { width: 14px; height: 14px; }
+    .island-footer { height: 46px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #666b74; }
+    .queue-count { display: flex; align-items: center; gap: 7px; color: #8f949d; }
+    .queue-count svg { width: 13px; height: 13px; color: #777e88; }
+    .page-foot { position: absolute; left: 48px; right: 48px; top: 838px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #7d858e; }
+    .specs { display: flex; align-items: center; gap: 24px; }
+    .specs span + span::before { content: "·"; margin-right: 24px; color: #aab0b7; }
+    .foot-brand { letter-spacing: 1px; font-size: 11px; color: #90979f; }
+  .foot-brand {color:#626975!important}</style>
+</head>
+<body>
+  <main class="board">
+    <header class="page-head">
+      <div><p class="eyebrow">B / 已选方向 · 会话伙伴岛</p><h2 class="page-title">会话伙伴岛</h2></div>
+      <p class="page-description">一行一个会话，需要你时就地展开。</p>
+    </header>
+    <section class="scene" aria-label="macOS 桌面中的 Codex Signal 会话伙伴岛">
+      <div class="wallpaper"></div>
+      <div class="menubar">
+        <div class="menu-left"><svg class="menu-icon" viewBox="0 0 20 22" fill="currentColor" aria-hidden="true"><path d="M13.2 3.8c.8-.9 1.3-2 1.2-3.1-1.1.1-2.5.8-3.2 1.7-.7.8-1.3 2-1.2 3.1 1.2.1 2.4-.7 3.2-1.7ZM16.7 11.6c0-2.6 2.2-3.9 2.3-4-1.3-1.8-3.2-2-3.9-2.1-1.6-.2-3.3 1-4.1 1-.8 0-2.1-1-3.4-1-1.8 0-3.5 1.1-4.4 2.6-1.9 3.3-.5 8.2 1.4 10.9.9 1.3 1.9 2.7 3.3 2.6 1.3-.1 1.8-.9 3.4-.9 1.6 0 2 .9 3.4.9s2.3-1.3 3.2-2.6c1-1.5 1.5-2.9 1.5-3-.1 0-2.7-1-2.7-4.4Z" transform="translate(-1 0) scale(.85)"/></svg><strong>Codex</strong><span>文件</span><span>编辑</span><span>显示</span><span>窗口</span></div>
+        <div class="menu-right"><svg class="menu-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 6.5a11 11 0 0 1 14 0M5.5 10a7 7 0 0 1 9 0M8 13a3.3 3.3 0 0 1 4 0"/><circle cx="10" cy="16" r=".8" fill="currentColor" stroke="none"/></svg><svg width="24" height="13" viewBox="0 0 26 14" fill="none" aria-hidden="true"><rect x=".5" y="1" width="21" height="12" rx="3" stroke="currentColor"/><rect x="3" y="3.5" width="16" height="7" rx="1" fill="currentColor" opacity=".8"/><path d="M24 5v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>周一 11月9日</span><span>10:42</span></div>
+      </div>
+      <div class="workspace" aria-hidden="true">
+        <div class="workspace-bar"><div class="window-dots"><i></i><i></i><i></i></div><span class="workspace-title">api-service — 工作区</span></div>
+        <div class="workspace-content"><aside class="sidebar"><h3>工作区</h3><p>api-service</p><p>src</p><p>database</p><p>migrations</p><p>package.json</p></aside>
+          <div class="editor"><div class="editor-tabs">migration.ts</div>
+            <div class="code-line"><span class="line-number">01</span><span class="code"><i style="width:45px"></i><i style="width:102px"></i><i style="width:73px"></i></span></div>
+            <div class="code-line"><span class="line-number">02</span></div>
+            <div class="code-line"><span class="line-number">03</span><span class="code"><i style="width:54px"></i><i style="width:67px"></i></span></div>
+            <div class="code-line"><span class="line-number">04</span><span class="code indent"><i style="width:105px"></i><i style="width:45px"></i><i style="width:97px"></i></span></div>
+            <div class="code-line"><span class="line-number">05</span><span class="code indent-2"><i style="width:76px"></i><i style="width:138px"></i></span></div>
+            <div class="code-line"><span class="line-number">06</span><span class="code indent-2"><i style="width:92px"></i><i style="width:65px"></i><i style="width:38px"></i></span></div>
+            <div class="code-line"><span class="line-number">07</span><span class="code indent"><i style="width:13px"></i></span></div>
+            <div class="code-line"><span class="line-number">08</span></div>
+            <div class="code-line"><span class="line-number">09</span><span class="code"><i style="width:57px"></i><i style="width:158px"></i></span></div>
+            <div class="editor-bottom">终端<span style="margin-left:30px">输出</span></div>
+          </div>
+        </div>
+      </div>
+      <section class="island" aria-label="Codex Signal，会话列表">
+        <div class="camera-clearance" aria-hidden="true"></div>
+        <header class="island-toolbar">
+          <div class="brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 7-5 5 5 5m8-10 5 5-5 5m-3-13-2 16"/></svg>Codex Signal</div>
+          <div class="filters" aria-label="会话筛选"><button type="button" class="filter selected" aria-pressed="true">全部<span class="filter-count">3</span></button><button type="button" class="filter" aria-pressed="false">待处理<span class="filter-count">1</span></button></div>
+          <button class="sound" type="button"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 5 7H2.5v6H5l4 3V4Z"/><path d="M12 6.5a5 5 0 0 1 0 7M14.5 4a8.5 8.5 0 0 1 0 12"/></svg>语音已开</button>
+        </header>
+        <div class="sessions">
+          <article class="session attention" aria-label="API 服务，CLI 会话，需要审批">
+            <img class="dex" src="../assets/toy-attention.svg" alt="团团 等待审批，对应 API 服务的 Codex CLI 会话">
+            <div class="session-body">
+              <div class="session-top"><h3 class="project">API 服务</h3><span class="source"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="m2 4 4 4-4 4m6 0h6"/></svg>CLI</span><time class="event-time">等候 2 分钟</time></div>
+              <div class="session-detail"><span class="session-task">确认数据库迁移</span><span class="status"><i class="status-dot"></i>需要审批</span></div>
+              <div class="attention-bottom"><span class="attention-note">迁移审批 · 会话 02</span><button class="primary" type="button">查看会话<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"/></svg></button></div>
+            </div>
+          </article>
+          <article class="session finished" aria-label="Atlas 网站，桌面版会话，本轮已结束">
+            <img class="dex" src="../assets/toy-idle.svg" alt="团团 空闲，对应 Atlas 网站已结束的 Codex 桌面版会话">
+            <div class="session-body"><div class="session-top"><h3 class="project">Atlas 网站</h3><span class="source"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="1.5" y="2" width="13" height="9" rx="1.5"/><path d="M8 11v3m-3 0h6"/></svg>桌面版</span><time class="event-time">刚刚</time></div><div class="session-detail"><span class="session-task">优化结账流程</span><span class="detail-separator"></span><span class="status"><i class="status-dot"></i>本轮已结束</span></div></div>
+          </article>
+          <article class="session working" aria-label="设计系统，桌面版会话，运行中">
+            <img class="dex" src="../assets/toy-working.svg" alt="团团 正在工作，对应设计系统运行中的 Codex 桌面版会话">
+            <div class="session-body"><div class="session-top"><h3 class="project">设计系统</h3><span class="source"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="1.5" y="2" width="13" height="9" rx="1.5"/><path d="M8 11v3m-3 0h6"/></svg>桌面版</span></div><div class="session-detail"><span class="session-task">检查组件</span><span class="detail-separator"></span><span class="status"><i class="status-dot"></i>运行中</span></div></div>
+          </article>
+        </div>
+        <footer class="island-footer"><span class="queue-count"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M3 3.5h10M3 8h10M3 12.5h6"/></svg>2 条待查看 · 1 条运行中</span><span>1 条待处理</span></footer>
+      </section>
+    </section>
+    <footer class="page-foot"><div class="specs"><span>700 × 432</span><span>圆润状态玩偶</span><span>熟悉的纵向会话列表</span><span>待处理优先</span></div><span class="foot-brand">CODEX SIGNAL / macOS</span></footer>
+  </main>
+<script src="../assets/mascot-art.js"></script><script src="../assets/mascot-motion.js"></script></body>
+</html>

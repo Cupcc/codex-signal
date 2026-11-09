@@ -1,0 +1,8 @@
+[
+  {"source":"cli","sessionId":"demo-api-cli","turnId":"turn-1","project":"API 服务","kind":"started","offset":-9},
+  {"source":"desktop","sessionId":"demo-atlas","turnId":"turn-1","project":"Atlas 网站","kind":"started","offset":-8},
+  {"source":"cli","sessionId":"demo-design","turnId":"turn-1","project":"设计系统","kind":"started","offset":-7},
+  {"source":"cli","sessionId":"demo-api-cli","turnId":"turn-1","project":"API 服务","kind":"approval","requestId":"approval-1","offset":-6},
+  {"source":"desktop","sessionId":"demo-atlas","turnId":"turn-1","project":"Atlas 网站","kind":"completed","offset":-5},
+  {"source":"desktop","sessionId":"demo-api-desktop","turnId":"turn-1","project":"API 服务","kind":"question","requestId":"question-1","offset":-4}
+]

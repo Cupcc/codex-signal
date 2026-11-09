@@ -1,0 +1,101 @@
+[
+  {
+    "file": "01-relay.png",
+    "target": "design/ui/01-relay.html",
+    "name": "01-relay",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": []
+  },
+  {
+    "file": "02-inbox.png",
+    "target": "design/ui/02-inbox.html",
+    "name": "02-inbox",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": []
+  },
+  {
+    "file": "03-dock.png",
+    "target": "design/ui/03-dock.html",
+    "name": "03-dock",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": []
+  },
+  {
+    "file": "sheet.png",
+    "width": 2000,
+    "height": 480,
+    "columns": 3,
+    "items": [
+      {
+        "naturalWidth": 1440,
+        "naturalHeight": 900,
+        "scale": 1,
+        "renderScale": 0.4444444444444444,
+        "sourceCrop": {
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "height": 900
+        },
+        "width": 640,
+        "height": 400,
+        "labelHeight": 32,
+        "x": 24,
+        "y": 24,
+        "label": "01-relay",
+        "labelY": 432
+      },
+      {
+        "naturalWidth": 1440,
+        "naturalHeight": 900,
+        "scale": 1,
+        "renderScale": 0.4444444444444444,
+        "sourceCrop": {
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "height": 900
+        },
+        "width": 640,
+        "height": 400,
+        "labelHeight": 32,
+        "x": 680,
+        "y": 24,
+        "label": "02-inbox",
+        "labelY": 432
+      },
+      {
+        "naturalWidth": 1440,
+        "naturalHeight": 900,
+        "scale": 1,
+        "renderScale": 0.4444444444444444,
+        "sourceCrop": {
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "height": 900
+        },
+        "width": 640,
+        "height": 400,
+        "labelHeight": 32,
+        "x": 1336,
+        "y": 24,
+        "label": "03-dock",
+        "labelY": 432
+      }
+    ],
+    "issues": []
+  }
+]

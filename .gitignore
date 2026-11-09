@@ -1,0 +1,11 @@
+.build/
+dist/
+.DS_Store
+.audit/
+.oil-ui/
+__pycache__/
+*.pyc
+.env
+.env.*
+*.p12
+*.p8

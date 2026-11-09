@@ -1,0 +1,34 @@
+{
+  "date": "2026-11-09",
+  "selectedDirection": "B 会话伙伴岛",
+  "renderChecks": [
+    {
+      "name": "inbox-render",
+      "renderIssues": 0,
+      "readabilityHints": 0
+    },
+    {
+      "name": "inbox-flows-render",
+      "renderIssues": 0,
+      "readabilityHints": 0
+    },
+    {
+      "name": "b-compare-render",
+      "renderIssues": 0,
+      "readabilityHints": 0
+    },
+    {
+      "name": "inbox-detail",
+      "renderIssues": 0,
+      "readabilityHints": 0
+    },
+    {
+      "name": "b-final-directions",
+      "renderIssues": 0,
+      "readabilityHints": 0
+    }
+  ],
+  "independentInitialScore": 8,
+  "scoreAfterCorrections": null,
+  "runtimeIntegrationTested": false
+}
