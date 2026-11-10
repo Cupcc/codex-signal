@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:codex-signal}",
+      "name": "Debug CodexSignal",
+      "target": "CodexSignal",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug CodexSignal"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:codex-signal}",
+      "name": "Release CodexSignal",
+      "target": "CodexSignal",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release CodexSignal"
+    }
+  ]
+}

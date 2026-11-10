@@ -15,3 +15,5 @@ fi
 python3 scripts/test_bridge.py
 
 python3 scripts/test_correlation.py
+
+python3 scripts/test_update_installer.py

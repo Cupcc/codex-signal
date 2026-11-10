@@ -57,10 +57,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.$sessions.sink { [weak self] _ in
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.statusItem.button?.title = self.model.pendingCount > 0 ? "◈ \(self.model.pendingCount)" : "◈ Signal"
+                self.statusItem.button?.title = self.model.pendingCount > 0 ? "◈ \(self.model.pendingCount)" : (self.model.readyCount > 0 ? "▤ \(self.model.readyCount)" : "◈ Signal")
             }
         }.store(in: &subscriptions)
         panel.show()
+        if !demo { model.updater.start() }
         if demo || args.contains("--expanded") { model.setExpanded(true) }
     }
 
@@ -70,6 +71,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(withTitle: "展开会话", action: #selector(expandPanel), keyEquivalent: "")
             menu.addItem(withTitle: "打开数据目录", action: #selector(openData), keyEquivalent: "")
             menu.addItem(.separator())
+            let update = menu.addItem(withTitle: updateMenuTitle, action: #selector(updateApp), keyEquivalent: "")
+            update.isEnabled = !model.updater.isBusy
+            menu.autoenablesItems = false
+            menu.addItem(withTitle: "GitHub 手动下载…", action: #selector(downloadManually), keyEquivalent: "")
+            menu.addItem(.separator())
             menu.addItem(withTitle: "关于 Codex Signal", action: #selector(about), keyEquivalent: "")
             menu.addItem(withTitle: "退出 Codex Signal", action: #selector(quit), keyEquivalent: "q")
             for item in menu.items { item.target = self }
@@ -78,6 +84,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusItem.menu = nil
         } else { panel.toggle() }
     }
+    private var updateMenuTitle: String {
+        switch model.updater.state {
+        case .ready: return "重启并更新…"
+        case .available: return "下载更新…"
+        case .checking: return "正在检查更新…"
+        case .downloading: return "正在下载更新…"
+        case .installing: return "正在准备重启…"
+        default: return "检查更新…"
+        }
+    }
+    @objc private func updateApp() {
+        switch model.updater.state {
+        case .ready: model.updater.install()
+        case .available: model.updater.downloadAvailable()
+        default: model.updater.check()
+        }
+        model.setExpanded(true)
+        model.updateSettingsRequested = true
+        panel.show()
+    }
+    @objc private func downloadManually() { model.updater.openDownloadPage() }
     @objc private func expandPanel() { model.setExpanded(true); panel.show() }
     @objc private func openData() { NSWorkspace.shared.open(model.dataDirectory) }
     @objc private func about() {

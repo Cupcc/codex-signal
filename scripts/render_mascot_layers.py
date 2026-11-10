@@ -62,7 +62,7 @@ def export():
                     ET.ElementTree(drawing).write(svg, encoding="unicode")
                     subprocess.run(["/usr/bin/sips", "-s", "format", "png", str(svg),
                                     "--out", str(OUTPUT / (name + ".png"))], check=True, stdout=subprocess.DEVNULL)
-    print("Exported 62 mascot layers at 2× design resolution.")
+    print(f"Exported {len(STATES) * 12 + 2} mascot layers at 2× design resolution.")
 
 
 if __name__ == "__main__":

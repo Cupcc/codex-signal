@@ -48,7 +48,8 @@ struct ActionFeedback: Equatable, Identifiable {
 final class AppModel: ObservableObject {
     @Published var sessions: [SignalSession] = []
     @Published var selectedID: String?
-    @Published var pendingOnly = false
+    @Published var sessionFilter: SessionFilter = .all
+    @Published var updateSettingsRequested = false
     @Published var expanded = false
     @Published var speechEnabled = true
     @Published var islandAlertsEnabled = true
@@ -64,6 +65,7 @@ final class AppModel: ObservableObject {
     @Published var isDemo = false
     @Published private(set) var isNavigating = false
     let dataDirectory: URL
+    let updater: UpdateController
     private var store = SessionStore()
     private var timer: Timer?
     private var subscriptions = Set<AnyCancellable>()
@@ -87,15 +89,17 @@ final class AppModel: ObservableObject {
 
     var activeSessions: [SignalSession] { sessions.filter(\.isVisible) }
     var visibleSessions: [SignalSession] {
-        activeSessions.filter { !pendingOnly || $0.pending }
+        activeSessions.filter(sessionFilter.includes)
     }
     var runningCount: Int { activeSessions.filter { $0.phase == .running }.count }
-    var aggregatePhase: SessionPhase { IslandNotice.aggregatePhase(sessions) }
+    var aggregatePhase: SessionPhase? { IslandNotice.aggregatePhase(sessions) }
     var pendingCount: Int { activeSessions.filter(\.pending).count }
+    var readyCount: Int { activeSessions.filter(\.ready).count }
     var unreadCount: Int { sessions.filter(\.unread).count }
 
     init(dataDirectory: URL, demo: Bool, feedbackDuration: Duration = .seconds(2), islandNoticeDuration: Duration = .seconds(6)) {
         self.dataDirectory = dataDirectory
+        self.updater = UpdateController(dataDirectory: dataDirectory)
         self.isDemo = demo
         self.feedbackDuration = feedbackDuration
         self.islandNoticeDuration = islandNoticeDuration
@@ -164,9 +168,9 @@ final class AppModel: ObservableObject {
                                              preferredTerminal: self.preferredTerminal))
             if !enabled { self.dismissIslandNotice() }
         }.store(in: &subscriptions)
-        $pendingOnly.dropFirst().sink { [weak self] value in
+        $sessionFilter.dropFirst().sink { [weak self] value in
             guard let self else { return }
-            let candidates = self.activeSessions.filter { !value || $0.pending }
+            let candidates = self.activeSessions.filter(value.includes)
             self.selectedID = candidates.last?.id
             DispatchQueue.main.async { [weak self] in self?.writeSnapshot() }
         }.store(in: &subscriptions)
@@ -468,7 +472,7 @@ final class AppModel: ObservableObject {
 
     func openIslandNotice() {
         let target = islandNotice?.primary.id
-        pendingOnly = false
+        sessionFilter = .all
         setExpanded(true)
         if let target { select(target) }
     }
@@ -591,7 +595,8 @@ final class AppModel: ObservableObject {
         let snapshot: [String: Any] = [
             "processID": ProcessInfo.processInfo.processIdentifier, "sessions": rows, "visibleIDs": visibleSessions.map(\.id), "selectedID": selectedID as Any? ?? NSNull(),
             "pendingCount": pendingCount, "unreadCount": unreadCount, "expanded": expanded,
-            "runningCount": runningCount, "aggregatePhase": aggregatePhase.rawValue,
+            "runningCount": runningCount, "aggregatePhase": aggregatePhase?.rawValue as Any? ?? NSNull(), "readyCount": readyCount,
+            "mascotState": PhaseAppearance(aggregatePhase).asset,
             "islandNoticeID": islandNotice?.id.uuidString as Any? ?? NSNull(),
             "islandNoticePhase": islandNotice?.primary.phase.rawValue as Any? ?? NSNull(),
             "islandNoticeCount": islandNotice?.sessions.count ?? 0,

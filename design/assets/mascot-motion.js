@@ -38,7 +38,9 @@
       track('idle-open','opacity',[0,0,1,1,0,0],[0,.44,.47,.57,.6,1],6400,true,0,true);
       track('idle-closed','opacity',[1,1,0,0,1,1],[0,.44,.47,.57,.6,1],6400,true,0,true);
     } else if (!record.suppressEntrance) {
-      if (record.state === 'attention') {
+      if (record.state === 'ready') {
+        track('character','transform',y([0,-6,1,0]),[0,.35,.7,1],900);
+      } else if (record.state === 'attention') {
         track('character','transform',y([0,3,-10,1,-4,0]),[0,.12,.35,.58,.76,1],1100);
         track('right','transform',rotate([0,38,-18,28,-10,0]),[0,.18,.38,.58,.78,1],1100);
       } else if (record.state === 'question') {
@@ -115,7 +117,7 @@
     get reduced(){return reduced||motionQuery.matches;}
   };
   for(const image of document.querySelectorAll('img[src*="toy-"]')) {
-    const match=image.getAttribute('src').match(/toy-(mini-)?(idle|working|attention|question|error)\.svg$/);
+    const match=image.getAttribute('src').match(/toy-(mini-)?(idle|working|attention|question|error|ready)\.svg$/);
     if(match)mount(image,match[2],Boolean(match[1]));
   }
   document.addEventListener('visibilitychange',refresh);

@@ -27,7 +27,7 @@ struct MascotAnimationTests {
 
     @Test func everyPoseAndSizeLoadsCompleteLayeredArtwork() throws {
         for mini in [false, true] {
-            for state in ["working", "idle", "attention", "question", "error"] {
+            for state in ["working", "idle", "attention", "question", "error", "ready"] {
                 let view = MascotAnimationView()
                 defer { view.stopObserving() }
                 view.configure(state: state, mini: mini, active: true, reduced: true)
@@ -70,7 +70,7 @@ struct MascotAnimationTests {
     }
 
     @Test func alertsSettleAndOnlyWorkingAndIdleLoop() {
-        for state in ["attention", "question", "error"] {
+        for state in ["attention", "question", "error", "ready"] {
             let tracks = MascotAnimation.tracks(for: state)
             #expect(!tracks.isEmpty)
             #expect(tracks.allSatisfy { !$0.loops && $0.duration <= 1.2 })

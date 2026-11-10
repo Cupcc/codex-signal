@@ -22,6 +22,7 @@ public struct SignalSession: Codable, Identifiable, Sendable, Equatable {
     public var isDismissed: Bool { dismissedAt != nil }
     public var isVisible: Bool { !isDismissed && !(seen && phase.terminal) }
     public var unread: Bool { !isDismissed && !seen && (phase.pending || phase.terminal) }
+    public var ready: Bool { phase == .completed && unread }
 
     public init(
         source: SessionSource,

@@ -46,6 +46,9 @@ struct IslandView: View {
             .animation(motion, value: model.islandNotice?.id)
         }
         .preferredColorScheme(.dark)
+        .onChange(of: model.updateSettingsRequested) { _, requested in
+            if requested { settingsVisible = true; model.updateSettingsRequested = false }
+        }
         .onChange(of: model.expanded) { _, expanded in
             if !expanded { settingsVisible = false; hoveredID = nil }
         }
@@ -80,7 +83,7 @@ struct IslandView: View {
                     .onChange(of: model.expanded) { _, expanded in
                         if expanded, let id = model.visibleSessions.last?.id { scroll.scrollTo(id, anchor: .bottom) }
                     }
-                    .onChange(of: model.pendingOnly) { _, _ in
+                    .onChange(of: model.sessionFilter) { _, _ in
                         if let id = model.visibleSessions.last?.id { scroll.scrollTo(id, anchor: .bottom) }
                     }
                     .onChange(of: model.visibleSessions.last?.id) { previous, latest in
@@ -168,8 +171,9 @@ struct IslandView: View {
 
     private var toolbar: some View {
         HStack(spacing: 3) {
-            filterButton("全部", count: activeCount, pending: false)
-            filterButton("待处理", count: model.pendingCount, pending: true)
+            filterButton("全部", count: activeCount, filter: .all)
+            filterButton("待处理", count: model.pendingCount, filter: .pending)
+            filterButton("待查看", count: model.readyCount, filter: .ready)
             Spacer(minLength: 0)
             HelpButton(title: "快捷键", message: "↑ ↓ 选择会话\n↵ \(keyboardAction)\nEsc 收起", symbol: "keyboard")
                 .foregroundStyle(muted)
@@ -180,19 +184,19 @@ struct IslandView: View {
         .padding(.bottom, 10)
     }
 
-    private func filterButton(_ title: String, count: Int, pending: Bool) -> some View {
-        Button { withAnimation(motion) { model.pendingOnly = pending } } label: {
+    private func filterButton(_ title: String, count: Int, filter: SessionFilter) -> some View {
+        Button { withAnimation(motion) { model.sessionFilter = filter } } label: {
             HStack(spacing: 6) {
                 Text(title)
                 Text("\(count)").monospacedDigit()
-                    .foregroundStyle(model.pendingOnly == pending ? Color.white.opacity(0.8) : muted)
+                    .foregroundStyle(model.sessionFilter == filter ? Color.white.opacity(0.8) : muted)
                     .contentTransition(.numericText())
             }
-            .font(.system(size: 11, weight: model.pendingOnly == pending ? .semibold : .regular))
+            .font(.system(size: 11, weight: model.sessionFilter == filter ? .semibold : .regular))
             .padding(.horizontal, 9)
             .frame(height: 26)
             .background {
-                if model.pendingOnly == pending {
+                if model.sessionFilter == filter {
                     RoundedRectangle(cornerRadius: 7)
                         .fill(Color.white.opacity(0.10))
                         .matchedGeometryEffect(id: "filter", in: filterSelection)
@@ -201,7 +205,7 @@ struct IslandView: View {
         }
         .buttonStyle(IslandButtonStyle())
         .accessibilityLabel("\(title)，\(count) 个会话")
-        .accessibilityAddTraits(model.pendingOnly == pending ? .isSelected : [])
+        .accessibilityAddTraits(model.sessionFilter == filter ? .isSelected : [])
     }
 
     private func sessionRow(_ session: SignalSession) -> some View {
@@ -210,7 +214,7 @@ struct IslandView: View {
         let source = SourceAppearance(session.source)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
-                MascotView(phase: session.phase, size: 32, motionActive: model.expanded)
+                MascotView(phase: session.phase, seen: session.seen, size: 32, motionActive: model.expanded)
                     .padding(.top, 2)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(session.displayTitle)
@@ -220,8 +224,10 @@ struct IslandView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .help(session.displayTitle)
                     HStack(spacing: 6) {
-                        Label(appearance.title, systemImage: appearance.symbol)
-                            .labelStyle(.iconOnly)
+                        HStack(spacing: 4) {
+                            Image(systemName: appearance.symbol)
+                            if session.ready { Text(appearance.title) }
+                        }
                             .foregroundStyle(appearance.color)
                             .help(appearance.title)
                             .accessibilityLabel(appearance.title)
@@ -368,7 +374,7 @@ struct IslandView: View {
             HStack(spacing: 5) {
                 Circle().fill(model.activeSessions.contains(where: { $0.phase == .running }) ? Color(red: 0.48, green: 0.73, blue: 0.66) : muted).frame(width: 4, height: 4)
                 Text("\(model.runningCount) 运行中")
-                Text("·  \(model.unreadCount) 待查看")
+                Text("·  \(model.readyCount) 待查看")
                 Spacer(minLength: 0)
             }
             .font(.system(size: 11))
@@ -394,13 +400,13 @@ struct IslandView: View {
     private var emptyState: some View {
         VStack(spacing: 10) {
             Spacer()
-            MascotView(phase: .completed, size: 48, motionActive: model.expanded)
-            Text(model.sessions.isEmpty ? "暂无会话" : (model.pendingOnly ? "暂无待处理提醒" : "暂无会话提醒"))
+            MascotView(phase: nil, size: 48, motionActive: model.expanded)
+            Text(model.sessions.isEmpty ? "暂无会话" : model.sessionFilter.emptyTitle)
                 .font(.system(size: 13, weight: .medium))
             if model.sessions.isEmpty {
                 ConnectionHelpButton(dataDirectory: model.dataDirectory)
-            } else if model.pendingOnly {
-                Button("查看全部") { withAnimation(motion) { model.pendingOnly = false } }
+            } else if model.sessionFilter != .all {
+                Button("查看全部") { withAnimation(motion) { model.sessionFilter = .all } }
                     .buttonStyle(.bordered)
             }
             Spacer()
@@ -425,11 +431,11 @@ struct IslandView: View {
         return HStack(spacing: 8) {
             Button { model.openIslandNotice() } label: {
                 HStack(spacing: 12) {
-                    MascotView(phase: session.phase, size: 36, motionActive: !model.expanded)
+                    MascotView(phase: session.phase, seen: session.seen, size: 36, motionActive: !model.expanded)
                         .id(session.id + session.turnId + (session.requestId ?? "") + session.phase.rawValue)
                     VStack(alignment: .leading, spacing: 5) {
                         HStack(spacing: 6) {
-                            Image(systemName: session.phase == .completed ? "checkmark.circle" : appearance.symbol)
+                            Image(systemName: appearance.symbol)
                                 .symbolEffect(.bounce, options: .nonRepeating, value: notice.id)
                                 .symbolEffectsRemoved(reduceMotion)
                             Text(appearance.title).fontWeight(.semibold)
@@ -478,11 +484,19 @@ struct IslandView: View {
                 .frame(maxWidth: .infinity)
                 if layout.notchWidth > 0 { Color.clear.frame(width: layout.notchWidth) }
                 HStack(spacing: 5) {
-                    Image(systemName: model.pendingCount > 0 ? "exclamationmark.circle.fill" : "tray")
-                    Text("\(model.pendingCount > 0 ? model.pendingCount : model.unreadCount)").contentTransition(.numericText())
-                    Image(systemName: "chevron.down").font(.system(size: 8)).foregroundStyle(muted)
+                    if model.pendingCount > 0 {
+                        compactBadge("exclamationmark.circle.fill", count: model.pendingCount, color: .orange)
+                    }
+                    if model.readyCount > 0 {
+                        compactBadge("doc.text", count: model.readyCount, color: PhaseAppearance(.completed).color)
+                    }
+                    if model.pendingCount == 0 && model.readyCount == 0 {
+                        compactBadge("tray", count: model.unreadCount, color: muted)
+                    }
+                    if model.pendingCount == 0 || model.readyCount == 0 {
+                        Image(systemName: "chevron.down").font(.system(size: 8)).foregroundStyle(muted)
+                    }
                 }
-                .foregroundStyle(model.pendingCount > 0 ? Color.orange : muted)
                 .frame(maxWidth: .infinity)
             }
             .font(.system(size: 11, weight: .medium))
@@ -493,8 +507,16 @@ struct IslandView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(IslandButtonStyle())
-        .help("\(model.runningCount) 个运行中 · \(model.pendingCount) 个待处理 · \(model.unreadCount) 个未查看，点击展开")
-        .accessibilityLabel("展开 Codex Signal，\(model.runningCount) 个运行中，\(model.pendingCount) 个待处理，\(model.unreadCount) 个未查看")
+        .help("\(model.runningCount) 个运行中 · \(model.pendingCount) 个待处理 · \(model.readyCount) 个待查看，点击展开")
+        .accessibilityLabel("展开 Codex Signal，\(model.runningCount) 个运行中，\(model.pendingCount) 个待处理，\(model.readyCount) 个待查看")
+    }
+
+    private func compactBadge(_ symbol: String, count: Int, color: Color) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: symbol)
+            Text(count > 99 ? "99+" : String(count)).contentTransition(.numericText())
+        }
+        .foregroundStyle(color)
     }
 
     private var settings: some View {
@@ -542,9 +564,11 @@ struct IslandView: View {
                 Spacer()
                 ConnectionHelpButton(dataDirectory: model.dataDirectory)
             }
+            Divider()
+            UpdateSettingsView(updater: model.updater)
         }
         .padding(22)
-        .frame(width: 330)
+        .frame(width: 350)
     }
 
     private func elapsed(_ timestamp: Double, now: Date) -> String {

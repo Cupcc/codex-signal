@@ -55,6 +55,9 @@ enum MascotAnimation {
             guard entrance else { return [] }
             var result: [Track] = []
             switch state {
+            case "ready":
+                result = [Track(part: "character", keyPath: "transform.translation.y", values: [0, -6, 1, 0],
+                                times: [0, 0.35, 0.7, 1], duration: 0.9)]
             case "attention":
                 result = [Track(part: "character", keyPath: "transform.translation.y", values: [0, 3, -10, 1, -4, 0],
                                 times: [0, 0.12, 0.35, 0.58, 0.76, 1], duration: 1.1),

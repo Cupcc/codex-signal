@@ -26,6 +26,61 @@ struct IslandNoticeTests {
         return model
     }
 
+    @Test func completedResultStaysReadyAfterNoticeExpiryAndRestartUntilAcknowledged() async throws {
+        let model = makeModel(duration: .milliseconds(100))
+        defer { try? FileManager.default.removeItem(at: model.dataDirectory) }
+        #expect(model.aggregatePhase == nil)
+        #expect(PhaseAppearance(model.aggregatePhase).asset == "idle")
+        try send([event(.started)], to: model)
+        #expect(PhaseAppearance(model.aggregatePhase).asset == "working")
+        try send([event(.completed)], to: model)
+        #expect(model.readyCount == 1)
+        #expect(PhaseAppearance(model.aggregatePhase).asset == "ready")
+        #expect(PhaseAppearance(model.aggregatePhase).title == "待查看")
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(model.islandNotice == nil)
+        #expect(model.readyCount == 1)
+        model.setExpanded(true)
+        model.sessionFilter = .ready
+        #expect(model.visibleSessions.map(\.id) == ["cli:main"])
+        #expect(model.selectedID == "cli:main")
+        #expect(model.readyCount == 1)
+        let restored = AppModel(dataDirectory: model.dataDirectory, demo: false)
+        restored.speechEnabled = false
+        #expect(restored.readyCount == 1)
+        #expect(PhaseAppearance(restored.aggregatePhase).asset == "ready")
+        #expect(restored.islandNotice == nil)
+        restored.markSeen("cli:main")
+        #expect(restored.readyCount == 0)
+        #expect(restored.visibleSessions.isEmpty)
+        #expect(PhaseAppearance(restored.aggregatePhase).asset == "idle")
+        let acknowledged = AppModel(dataDirectory: model.dataDirectory, demo: false)
+        #expect(acknowledged.readyCount == 0)
+        #expect(acknowledged.visibleSessions.isEmpty)
+    }
+
+    @Test func readyFilterExcludesFailuresAndRequestsAndClearsOnNewWork() throws {
+        let model = makeModel()
+        defer { try? FileManager.default.removeItem(at: model.dataDirectory) }
+        try send([event(.completed), event(.failed, session: "failed"), event(.stopped, session: "stopped"),
+                  event(.approval, session: "approval", request: "permission")], to: model)
+        model.sessionFilter = .ready
+        #expect(model.visibleSessions.map(\.id) == ["cli:main"])
+        #expect(model.readyCount == 1)
+        #expect(model.pendingCount == 1)
+        #expect(model.aggregatePhase == .approval)
+        model.markSeen("cli:approval")
+        #expect(model.pendingCount == 1)
+        #expect(model.readyCount == 1)
+        try send([event(.started, turn: "next")], to: model)
+        #expect(model.readyCount == 0)
+        #expect(model.visibleSessions.isEmpty)
+        try send([event(.completed, turn: "next")], to: model)
+        #expect(model.readyCount == 1)
+        model.dismissReminder("cli:main")
+        #expect(model.readyCount == 0)
+    }
+
     @Test func oldCompletionCannotPutRunningMascotToSleep() throws {
         let model = makeModel()
         defer { try? FileManager.default.removeItem(at: model.dataDirectory) }
@@ -33,7 +88,7 @@ struct IslandNoticeTests {
         #expect(model.activeSessions.first?.phase == .completed)
         #expect(model.aggregatePhase == .running)
         #expect(model.runningCount == 1)
-        model.pendingOnly = true
+        model.sessionFilter = .pending
         #expect(model.visibleSessions.isEmpty)
         #expect(model.aggregatePhase == .running)
         try send([event(.question, request: "answer")], to: model)

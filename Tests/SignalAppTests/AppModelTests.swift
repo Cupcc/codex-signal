@@ -19,10 +19,10 @@ struct AppModelTests {
         model.setExpanded(false)
         model.setExpanded(true)
         #expect(model.selectedID == model.visibleSessions.last?.id)
-        model.pendingOnly = true
+        model.sessionFilter = .pending
         #expect(model.selectedID == model.visibleSessions.last?.id)
         #expect(model.visibleSessions.allSatisfy { $0.pending })
-        model.pendingOnly = false
+        model.sessionFilter = .all
         #expect(model.selectedID == model.visibleSessions.last?.id)
     }
 
@@ -80,7 +80,7 @@ struct AppModelTests {
         #expect(!model.visibleSessions.contains(where: { $0.id == pending.id }))
         #expect(model.selectedID == model.visibleSessions[min(pendingIndex, model.visibleSessions.count - 1)].id)
         #expect(model.sessions.first(where: { $0.id == pending.id })?.pending == true)
-        model.pendingOnly = true
+        model.sessionFilter = .pending
         #expect(model.visibleSessions.isEmpty)
         #expect(model.selectedID == nil)
 

@@ -63,7 +63,7 @@ final class IslandPanel {
         model.$islandNotice.removeDuplicates().sink { [weak self] _ in
             DispatchQueue.main.async { self?.refresh(animated: true) }
         }.store(in: &subscriptions)
-        Publishers.CombineLatest(model.$sessions, model.$pendingOnly)
+        Publishers.CombineLatest(model.$sessions, model.$sessionFilter)
             .sink { [weak self] _, _ in
                 DispatchQueue.main.async { self?.refresh(animated: true) }
             }.store(in: &subscriptions)

@@ -17,12 +17,13 @@ struct IslandNotice: Equatable, Identifiable {
         }
     }
 
-    static func aggregatePhase(_ sessions: [SignalSession]) -> SessionPhase {
+    static func aggregatePhase(_ sessions: [SignalSession]) -> SessionPhase? {
         let active = sessions.filter(\.isVisible)
         if let pending = active.filter(\.pending).min(by: { $0.updatedAt < $1.updatedAt }) { return pending.phase }
         if active.contains(where: { $0.phase == .running }) { return .running }
         if let problem = active.last(where: { $0.phase == .failed || $0.phase == .disconnected }) { return problem.phase }
-        return active.last?.phase ?? .completed
+        if active.contains(where: \.ready) { return .completed }
+        return active.last?.phase
     }
 
     static func receiving(_ events: [SignalEvent], sessions: [SignalSession], current: IslandNotice?) -> IslandNotice? {
