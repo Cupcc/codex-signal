@@ -7,6 +7,7 @@ struct IslandView: View {
     @ObservedObject var layoutState: IslandLayoutState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var settingsVisible = false
+    @State private var markAllHovered = false
     @State private var hoveredID: String?
     @State private var scrollPositionID: String?
     @Namespace private var filterSelection
@@ -50,17 +51,21 @@ struct IslandView: View {
             if requested { settingsVisible = true; model.updateSettingsRequested = false }
         }
         .onChange(of: model.expanded) { _, expanded in
-            if !expanded { settingsVisible = false; hoveredID = nil }
+            if !expanded { settingsVisible = false; hoveredID = nil; markAllHovered = false }
         }
     }
 
     private var expandedContent: some View {
         VStack(spacing: 0) {
-            if !layout.headerUsesNotchSpace { Color.clear.frame(height: layout.topInset) }
-            statusBar
-            toolbar
+            VStack(spacing: 0) {
+                if !layout.headerUsesNotchSpace { Color.clear.frame(height: layout.topInset) }
+                statusBar
+                toolbar
+            }
+            .reportExpandedContentHeight()
             if model.visibleSessions.isEmpty {
                 emptyState
+                    .preference(key: ExpandedContentHeightKey.self, value: IslandLayout.emptyStateHeight)
             } else {
                 ScrollViewReader { scroll in
                     ScrollView {
@@ -73,6 +78,7 @@ struct IslandView: View {
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 4)
+                        .reportExpandedContentHeight()
                         .scrollTargetLayout()
                         .animation(motion, value: model.selectedID)
                         .animation(motion, value: model.visibleSessions.map(\.id))
@@ -103,6 +109,12 @@ struct IslandView: View {
                 }
             }
             footer
+                .reportExpandedContentHeight()
+        }
+        .onPreferenceChange(ExpandedContentHeightKey.self) { height in
+            if height > 0, layoutState.expandedContentHeight != height {
+                layoutState.expandedContentHeight = height
+            }
         }
     }
 
@@ -175,8 +187,32 @@ struct IslandView: View {
             filterButton("待处理", count: model.pendingCount, filter: .pending)
             filterButton("待查看", count: model.readyCount, filter: .ready)
             Spacer(minLength: 0)
-            HelpButton(title: "快捷键", message: "↑ ↓ 选择会话\n↵ \(keyboardAction)\nEsc 收起", symbol: "keyboard")
-                .foregroundStyle(muted)
+            ZStack {
+                Button { withAnimation(motion) { model.markAllSeen() } } label: {
+                    HStack(spacing: markAllHovered ? 6 : 0) {
+                        Image(systemName: "checkmark.circle")
+                            .font(.system(size: 13))
+                            .frame(width: 12)
+                        Text("全部已读")
+                            .font(.system(size: 11, weight: .medium))
+                            .fixedSize()
+                            .frame(width: markAllHovered ? 44 : 0, alignment: .leading)
+                            .opacity(markAllHovered ? 1 : 0)
+                            .clipped()
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(height: 26)
+                    .foregroundStyle(markAllHovered ? Color.white.opacity(0.92) : muted)
+                    .background(Color.white.opacity(markAllHovered ? 0.08 : 0), in: RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(IslandButtonStyle())
+                .disabled(model.clearableSessions.isEmpty)
+                .opacity(model.clearableSessions.isEmpty ? 0.4 : 1)
+                .accessibilityLabel("全部已读")
+            }
+            .contentShape(Rectangle())
+            .onHover { markAllHovered = $0 }
+            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.86), value: markAllHovered)
         }
         .foregroundStyle(Color(red: 0.92, green: 0.94, blue: 0.97))
         .padding(.horizontal, 18)
@@ -520,54 +556,84 @@ struct IslandView: View {
     }
 
     private var settings: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("设置").font(.headline)
-            Picker("首选终端", selection: $model.preferredTerminal) {
-                ForEach(TerminalPreference.allCases) { terminal in
-                    Text(terminal.title).tag(terminal)
-                }
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("设置").font(.headline)
+                Spacer()
+                Button("预览提醒") { model.previewIslandNotice() }
+                ConnectionHelpButton(dataDirectory: model.dataDirectory)
             }
-            .help("有原标签页时直接打开；否则优先查找所选终端，未找到再查找其他终端。")
+            HStack {
+                Text("首选终端")
+                Spacer()
+                Picker("首选终端", selection: $model.preferredTerminal) {
+                    ForEach(TerminalPreference.allCases) { terminal in
+                        Text(terminal.title).tag(terminal)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 120)
+                .help("有原标签页时直接打开；否则优先查找所选终端，未找到再查找其他终端。")
+            }
             Divider()
             HStack {
-                Toggle("中文语音提醒", isOn: $model.speechEnabled)
-                HelpButton(title: "语音提醒说明", message: "仅关闭语音；灵动岛仍可提示。重新开启不补播。")
+                HStack(spacing: 4) {
+                    Toggle("中文语音提醒", isOn: $model.speechEnabled)
+                        .fixedSize()
+                    HelpButton(title: "语音提醒说明", message: "仅关闭语音；灵动岛仍可提示。重新开启不补播。")
+                }
+                Spacer(minLength: 8)
+                HStack(spacing: 4) {
+                    Toggle("灵动岛提示", isOn: $model.islandAlertsEnabled)
+                        .fixedSize()
+                    HelpButton(title: "灵动岛提示说明", message: "新提醒短暂展开，6 秒后收起。待处理标记会保留；关闭提示不影响状态动画。")
+                }
             }
-            HStack {
-                Toggle("灵动岛提示", isOn: $model.islandAlertsEnabled)
-                HelpButton(title: "灵动岛提示说明", message: "新提醒短暂展开，6 秒后收起。待处理标记会保留；关闭提示不影响状态动画。")
-            }
-            HStack {
+            HStack(spacing: 4) {
                 Toggle("勿扰时段", isOn: $model.quietHoursEnabled)
+                    .fixedSize()
                 HelpButton(title: "静音说明", message: "锁屏及勿扰时段仅静音。")
-            }
-            HStack {
-                Picker("从", selection: $model.quietStart) {
-                    ForEach(0..<24, id: \.self) { Text(String(format: "%02d:00", $0)).tag($0) }
+                Spacer(minLength: 8)
+                HStack(spacing: 4) {
+                    Picker("从", selection: $model.quietStart) {
+                        ForEach(0..<24, id: \.self) { Text(String(format: "%02d:00", $0)).tag($0) }
+                    }
+                    .labelsHidden()
+                    .frame(width: 78)
+                    Text("–").foregroundStyle(.secondary)
+                    Picker("至", selection: $model.quietEnd) {
+                        ForEach(0..<24, id: \.self) { Text(String(format: "%02d:00", $0)).tag($0) }
+                    }
+                    .labelsHidden()
+                    .frame(width: 78)
                 }
-                Picker("至", selection: $model.quietEnd) {
-                    ForEach(0..<24, id: \.self) { Text(String(format: "%02d:00", $0)).tag($0) }
-                }
+                .disabled(!model.quietHoursEnabled)
             }
-            .disabled(!model.quietHoursEnabled)
             Divider()
-            HStack {
+            HStack(spacing: 4) {
+                Text("自动清理")
+                HelpButton(title: "自动清理说明", message: "按最后一次状态更新计算，清理所有到期提醒。有新状态时会再次显示。")
+                Spacer()
                 Picker("自动清理", selection: $model.retentionDays) {
                     ForEach(SignalSettings.retentionOptions, id: \.self) { days in
                         Text("\(days) 天").tag(days)
                     }
                 }
-                HelpButton(title: "自动清理说明", message: "按最后一次状态更新计算，清理所有到期提醒。有新状态时会再次显示。")
+                .labelsHidden()
+                .frame(width: 120)
             }
+            Divider()
             HStack {
-                Button("预览提醒") { model.previewIslandNotice() }
+                Text("快捷键")
                 Spacer()
-                ConnectionHelpButton(dataDirectory: model.dataDirectory)
+                Text("↑ ↓ 选择 · ↵ \(keyboardAction) · Esc 收起")
+                    .foregroundStyle(.secondary)
             }
+            .font(.system(size: 11))
             Divider()
             UpdateSettingsView(updater: model.updater)
         }
-        .padding(22)
+        .padding(20)
         .frame(width: 350)
     }
 
@@ -577,6 +643,24 @@ struct IslandView: View {
         if minutes < 60 { return "\(minutes) 分钟前" }
         if minutes < 1440 { return "\(minutes / 60) 小时前" }
         return "\(minutes / 1440) 天前"
+    }
+}
+
+private struct ExpandedContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value += nextValue()
+    }
+}
+
+private extension View {
+    func reportExpandedContentHeight() -> some View {
+        background {
+            GeometryReader { geometry in
+                Color.clear.preference(key: ExpandedContentHeightKey.self, value: geometry.size.height)
+            }
+        }
     }
 }
 

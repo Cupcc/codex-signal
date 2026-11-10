@@ -96,6 +96,7 @@ final class AppModel: ObservableObject {
     var pendingCount: Int { activeSessions.filter(\.pending).count }
     var readyCount: Int { activeSessions.filter(\.ready).count }
     var unreadCount: Int { sessions.filter(\.unread).count }
+    var clearableSessions: [SignalSession] { activeSessions.filter { $0.phase != .running && !$0.pending } }
 
     init(dataDirectory: URL, demo: Bool, feedbackDuration: Duration = .seconds(2), islandNoticeDuration: Duration = .seconds(6)) {
         self.dataDirectory = dataDirectory
@@ -375,26 +376,32 @@ final class AppModel: ObservableObject {
     }
 
     func markSeen(_ id: String) {
-        acknowledge(id, dismiss: false)
+        acknowledge([id], dismiss: false)
+    }
+
+    func markAllSeen() {
+        acknowledge(clearableSessions.map(\.id), dismiss: true)
     }
 
     func dismissReminder(_ id: String) {
-        acknowledge(id, dismiss: true)
+        acknowledge([id], dismiss: true)
     }
 
-    private func acknowledge(_ id: String, dismiss: Bool) {
-        guard sessions.contains(where: { $0.id == id }) else { return }
+    private func acknowledge(_ ids: [String], dismiss: Bool) {
+        guard !ids.isEmpty, sessions.contains(where: { ids.contains($0.id) }) else { return }
         let previous = store
         let oldRows = visibleSessions
-        let wasSelected = selectedID == id
-        let oldIndex = oldRows.firstIndex(where: { $0.id == id })
-        if dismiss { store.dismiss(id) } else { store.markSeen(id) }
+        let oldSelection = selectedID
+        let oldIndex = oldRows.firstIndex(where: { $0.id == oldSelection })
+        for id in ids {
+            if dismiss { store.dismiss(id) } else { store.markSeen(id) }
+        }
         do {
             try save()
-            speech.cancel(sessionID: id)
+            for id in ids { speech.cancel(sessionID: id) }
             synchronize()
             // Keep the user's place when an acknowledged or dismissed row leaves.
-            if wasSelected, let oldIndex, !visibleSessions.contains(where: { $0.id == id }), !visibleSessions.isEmpty {
+            if let oldIndex, !visibleSessions.contains(where: { $0.id == oldSelection }), !visibleSessions.isEmpty {
                 selectedID = visibleSessions[min(oldIndex, visibleSessions.count - 1)].id
             }
             resolveIssue(.acknowledgement)

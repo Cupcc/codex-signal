@@ -28,16 +28,18 @@ struct IslandScreenGeometry {
     }
 }
 
-/// One sizing policy shared by the window and its fixed-width content. Keep the
-/// top edge stationary and leave room for a selected row plus three sessions.
+/// One sizing policy shared by the window and its fixed-width content.
+/// Fit the measured content while keeping the top edge and height limit fixed.
 struct IslandLayout: Equatable {
     static let headerSideInset: CGFloat = 14
     // Three 28-point buttons and two 2-point gaps must fit beside the camera.
     static let headerControlsWidth: CGFloat = 88
+    static let maximumContentHeight: CGFloat = 530
+    static let emptyStateHeight: CGFloat = 156
     var notchWidth: CGFloat = 0
     var topInset: CGFloat = 0
     var compactSize = CGSize(width: 164, height: 32)
-    var expandedSize = CGSize(width: 404, height: 458)
+    var expandedSize = CGSize(width: 404, height: maximumContentHeight)
     var noticeSize = CGSize(width: 360, height: 110)
 
     var headerUsesNotchSpace: Bool {
@@ -46,7 +48,7 @@ struct IslandLayout: Equatable {
 
     init() {}
 
-    init(geometry: IslandScreenGeometry, availableWidth: CGFloat, availableHeight: CGFloat, sessionCount: Int) {
+    init(geometry: IslandScreenGeometry, availableWidth: CGFloat, availableHeight: CGFloat, contentHeight: CGFloat? = nil) {
         notchWidth = geometry.hasNotch ? geometry.width : 0
         topInset = geometry.hasNotch ? geometry.height : 0
         let widthLimit = max(1, availableWidth)
@@ -54,9 +56,9 @@ struct IslandLayout: Equatable {
         compactSize = CGSize(width: min(widthLimit, notchWidth + 164),
                              height: min(heightLimit, max(32, topInset)))
         expandedSize.width = min(widthLimit, max(404, notchWidth + 2 * (Self.headerSideInset + Self.headerControlsWidth)))
-        let contentHeight = sessionCount == 0 ? 274 : 242 + CGFloat(min(4, max(1, sessionCount))) * 72
         let extraHeaderHeight = headerUsesNotchSpace ? max(0, topInset - 32) : topInset
-        expandedSize.height = min(heightLimit, contentHeight + extraHeaderHeight)
+        let maximumHeight = Self.maximumContentHeight + extraHeaderHeight
+        expandedSize.height = min(heightLimit, maximumHeight, contentHeight ?? maximumHeight)
         noticeSize = CGSize(width: min(widthLimit, max(360, compactSize.width)),
                             height: min(heightLimit, compactSize.height + 78))
     }
@@ -64,8 +66,9 @@ struct IslandLayout: Equatable {
     func size(expanded: Bool, alerting: Bool = false) -> CGSize { expanded ? expandedSize : alerting ? noticeSize : compactSize }
 
     func frame(expanded: Bool, alerting: Bool = false, centerX: CGFloat, top: CGFloat, scale: CGFloat) -> CGRect {
-        let size = size(expanded: expanded, alerting: alerting)
+        var size = size(expanded: expanded, alerting: alerting)
         let pixelScale = max(1, scale)
+        size.height = (size.height * pixelScale).rounded(.up) / pixelScale
         // Align to physical pixels; a fractional left edge makes the border fuzzy.
         return CGRect(x: ((centerX - size.width / 2) * pixelScale).rounded() / pixelScale,
                       y: ((top - size.height) * pixelScale).rounded() / pixelScale,

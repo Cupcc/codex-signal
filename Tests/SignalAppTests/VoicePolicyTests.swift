@@ -1,4 +1,5 @@
 import Testing
+import AVFoundation
 import Foundation
 import SignalCore
 @testable import SignalApp
@@ -19,19 +20,90 @@ struct VoicePolicyTests {
     }
 
     @Test func testOrdinaryChildCompletionAndInterruptStaySilent() {
-        #expect(VoicePolicy.phrase(for: [event(.completed, child: true)]) == nil)
-        #expect(VoicePolicy.phrase(for: [event(.stopped)]) == nil)
-        #expect(VoicePolicy.phrase(for: [event(.started)]) == nil)
-        #expect(VoicePolicy.phrase(for: [event(.approval, child: true)]) != nil)
+        #expect(VoicePolicy.clip(for: [event(.completed, child: true)]) == nil)
+        #expect(VoicePolicy.clip(for: [event(.stopped)]) == nil)
+        #expect(VoicePolicy.clip(for: [event(.started)]) == nil)
+        #expect(VoicePolicy.clip(for: [event(.approval, child: true)]) != nil)
     }
 
     @Test func testMultipleSessionsMergeWithoutReadingProjectOrBody() {
-        #expect(VoicePolicy.phrase(for: [event(.approval), event(.completed, session: "b")]) == "有多个任务需要你处理。")
-        #expect(VoicePolicy.phrase(for: [event(.completed), event(.completed, session: "b")]) == "有多个任务本轮已结束。")
+        #expect(VoicePolicy.clip(for: [event(.approval), event(.completed, session: "b")]) == .multipleAttention)
+        #expect(VoicePolicy.clip(for: [event(.completed), event(.completed, session: "b")]) == .multipleCompleted)
     }
 
     @Test func testHumanRequestTakesPriorityWithinOneSession() {
-        #expect(VoicePolicy.phrase(for: [event(.completed), event(.question)]) == "Codex 等待回答。")
+        #expect(VoicePolicy.clip(for: [event(.completed), event(.question)]) == .question)
+        #expect(VoicePolicy.clip(for: [event(.failed), event(.approval)]) == .approval)
+    }
+
+    @Test func testSingleSessionUsesCustomFileNames() throws {
+        let cases: [(EventKind, String)] = [
+            (.approval, "codex-approval.mp3"),
+            (.question, "codex-question.mp3"),
+            (.failed, "codex-failed.mp3"),
+            (.completed, "codex-completed.mp3")
+        ]
+        for (kind, filename) in cases {
+            let clip = try #require(VoicePolicy.clip(for: [event(kind)]))
+            #expect(clip.url?.lastPathComponent == filename)
+        }
+    }
+
+    @Test func testEveryBundledClipDecodesToNonSilentAudio() throws {
+        for clip in VoiceClip.allCases {
+            let url = try #require(clip.url)
+            let file = try AVAudioFile(forReading: url)
+            #expect(file.length > 0)
+            let buffer = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat,
+                                                      frameCapacity: AVAudioFrameCount(file.length)))
+            try file.read(into: buffer)
+            let samples = try #require(buffer.floatChannelData)
+            #expect((0..<Int(buffer.frameLength)).contains { abs(samples[0][$0]) > 0.001 })
+            let player = try AVAudioPlayer(contentsOf: url)
+            #expect(player.duration > 0)
+        }
+    }
+
+    @Test @MainActor func testPreviewsPlaySeriallyAndCancelClearsQueue() async throws {
+        let speech = SpeechController(volume: 0)
+        speech.allowed = { true }
+        var phrases: [String] = []
+        speech.didSpeak = { phrases.append($0) }
+        defer { speech.cancel() }
+        speech.preview()
+        speech.preview()
+        speech.preview()
+        #expect(phrases == [VoiceClip.approval.phrase])
+
+        let duration = try AVAudioPlayer(contentsOf: #require(VoiceClip.approval.url)).duration
+        let deadline = Date().addingTimeInterval(duration + 3)
+        while phrases.count < 2 && Date() < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(phrases.count == 2)
+        speech.cancel()
+        try await Task.sleep(for: .seconds(duration + 0.5))
+        #expect(phrases.count == 2)
+    }
+
+    @Test @MainActor func testSceneQuietCancelsAndDoesNotReplayPreviews() async throws {
+        let speech = SpeechController(volume: 0)
+        speech.allowed = { true }
+        var count = 0
+        speech.didSpeak = { _ in count += 1 }
+        defer { speech.cancel() }
+        speech.preview()
+        speech.preview()
+        speech.sceneQuiet = true
+        speech.preview()
+        speech.sceneQuiet = false
+
+        let duration = try AVAudioPlayer(contentsOf: #require(VoiceClip.approval.url)).duration
+        try await Task.sleep(for: .seconds(duration + 0.5))
+        #expect(count == 1)
+        speech.allowed = { false }
+        speech.preview()
+        #expect(count == 1)
     }
 
     private func event(_ kind: EventKind, session: String = "a", child: Bool = false) -> SignalEvent {

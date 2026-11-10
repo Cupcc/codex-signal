@@ -50,6 +50,83 @@ struct AppModelTests {
         #expect(model.visibleSessions.first(where: { $0.id == pending.id })?.seen == true)
     }
 
+    private func modelWithInactiveResults() throws -> AppModel {
+        let model = try model()
+        let now = Date().timeIntervalSince1970
+        for (index, kind) in [EventKind.completed, .completed, .question, .failed, .stopped, .disconnected].enumerated() {
+            let event = SignalEvent(eventId: "bulk-\(index)", source: .cli, sessionId: "bulk-\(index)",
+                                    turnId: "turn-1", project: "批量已读", kind: kind, occurredAt: now + Double(index))
+            try JSONEncoder().encode(event).write(to: model.dataDirectory.appendingPathComponent("inbox/bulk-\(index).json"))
+        }
+        model.drainInbox(silent: true)
+        return model
+    }
+
+    @Test(arguments: [SessionFilter.all, .pending, .ready])
+    func markingAllSeenClearsReadyAndInactiveAcrossFiltersAndPersists(filter: SessionFilter) throws {
+        let model = try modelWithInactiveResults()
+        defer { try? FileManager.default.removeItem(at: model.dataDirectory) }
+        model.sessionFilter = filter
+        if let remaining = model.visibleSessions.first(where: { $0.pending || $0.phase == .running }) { model.select(remaining.id) }
+        let selected = model.selectedID
+        let clearedIDs = Set(model.activeSessions.filter { $0.phase != .running && !$0.pending }.map(\.id))
+        let otherSessions = model.sessions.filter { !clearedIDs.contains($0.id) }
+        #expect(model.readyCount == 3)
+        #expect(clearedIDs.count == 6)
+
+        model.markAllSeen()
+
+        #expect(model.readyCount == 0)
+        #expect(model.pendingCount == 2)
+        #expect(model.unreadCount == 2)
+        #expect(model.sessions.filter { !clearedIDs.contains($0.id) } == otherSessions)
+        #expect(model.sessions.filter { clearedIDs.contains($0.id) }.allSatisfy { $0.seen && $0.isDismissed })
+        #expect(!model.activeSessions.contains { clearedIDs.contains($0.id) })
+        #expect(model.clearableSessions.isEmpty)
+        if filter == .ready {
+            #expect(model.visibleSessions.isEmpty)
+            #expect(model.selectedID == nil)
+        } else {
+            #expect(model.selectedID == selected)
+        }
+        let after = model.sessions
+        model.markAllSeen()
+        #expect(model.sessions == after)
+        #expect(model.statusMessage.isEmpty)
+        let restored = AppModel(dataDirectory: model.dataDirectory, demo: true)
+        #expect(restored.sessions == model.sessions)
+        let data = try Data(contentsOf: model.dataDirectory.appendingPathComponent("runtime-status.json"))
+        let snapshot = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(snapshot["readyCount"] as? Int == 0)
+    }
+
+    @Test func failedBulkReadKeepsAllResultsAndRetries() throws {
+        let model = try modelWithInactiveResults()
+        defer { try? FileManager.default.removeItem(at: model.dataDirectory) }
+        model.sessionFilter = .ready
+        let before = model.sessions
+        let selected = model.selectedID
+        let stateURL = model.dataDirectory.appendingPathComponent("state.json")
+        try FileManager.default.removeItem(at: stateURL)
+        try FileManager.default.createDirectory(at: stateURL, withIntermediateDirectories: false)
+
+        model.markAllSeen()
+
+        #expect(model.sessions == before)
+        #expect(model.readyCount == 3)
+        #expect(model.selectedID == selected)
+        #expect(model.clearableSessions.count == 6)
+        #expect(model.statusMessage == "关闭提醒保存失败，请重试")
+        try FileManager.default.removeItem(at: stateURL)
+        model.markAllSeen()
+        #expect(model.readyCount == 0)
+        #expect(model.clearableSessions.isEmpty)
+        #expect(model.statusMessage.isEmpty)
+        let restored = AppModel(dataDirectory: model.dataDirectory, demo: true)
+        #expect(restored.readyCount == 0)
+        #expect(restored.clearableSessions.isEmpty)
+    }
+
     @Test func invalidSelectionIsIgnoredAndDemoNeverNavigates() throws {
         let model = try model()
         let selection = model.selectedID

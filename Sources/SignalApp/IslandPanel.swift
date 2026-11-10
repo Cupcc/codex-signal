@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import OSLog
 import QuartzCore
 import SwiftUI
 
@@ -22,10 +23,12 @@ private final class SignalHostingView: NSHostingView<IslandView> {
 @MainActor
 final class IslandLayoutState: ObservableObject {
     @Published var layout = IslandLayout()
+    @Published var expandedContentHeight: CGFloat?
 }
 
 @MainActor
 final class IslandPanel {
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "CodexSignal", category: "Windowing")
     private let model: AppModel
     private let panel: SignalPanel
     private let hosting: SignalHostingView
@@ -36,6 +39,7 @@ final class IslandPanel {
     private var screenObserver: NSObjectProtocol?
     private var screenID: NSNumber?
     private var targetFrame: NSRect = .zero
+    private var frameAnimationID: UUID?
 
     init(model: AppModel) {
         self.model = model
@@ -56,11 +60,16 @@ final class IslandPanel {
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.isMovableByWindowBackground = false
+        panel.isMovable = false
+        panel.acceptsMouseMovedEvents = true
         screenID = NSScreen.main?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
         model.$expanded.removeDuplicates().sink { [weak self] _ in
             DispatchQueue.main.async { self?.refresh(animated: true) }
         }.store(in: &subscriptions)
         model.$islandNotice.removeDuplicates().sink { [weak self] _ in
+            DispatchQueue.main.async { self?.refresh(animated: true) }
+        }.store(in: &subscriptions)
+        layoutState.$expandedContentHeight.removeDuplicates().sink { [weak self] _ in
             DispatchQueue.main.async { self?.refresh(animated: true) }
         }.store(in: &subscriptions)
         Publishers.CombineLatest(model.$sessions, model.$sessionFilter)
@@ -73,6 +82,12 @@ final class IslandPanel {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
+        Publishers.Merge(NotificationCenter.default.publisher(for: NSWindow.didMoveNotification, object: panel),
+                         NotificationCenter.default.publisher(for: NSWindow.didResizeNotification, object: panel))
+            .sink { [weak self] _ in
+                guard self?.frameAnimationID == nil else { return }
+                DispatchQueue.main.async { self?.restoreAnchorIfNeeded() }
+            }.store(in: &subscriptions)
         NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)
             .sink { [weak self] notification in
                 guard let self, self.contains(notification.object as? NSWindow) else { return }
@@ -175,24 +190,46 @@ final class IslandPanel {
         let layout = IslandLayout(geometry: geometry,
                                   availableWidth: screen.visibleFrame.width - 24,
                                   availableHeight: top - screen.visibleFrame.minY - 12,
-                                  sessionCount: model.visibleSessions.count)
+                                  contentHeight: layoutState.expandedContentHeight)
         if layoutState.layout != layout { layoutState.layout = layout }
         let frame = layout.frame(expanded: model.expanded, alerting: model.islandNotice != nil, centerX: screen.frame.midX,
                                  top: top, scale: screen.backingScaleFactor)
-        guard targetFrame != frame else { return }
+        let shouldAnimate = animated && panel.isVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if targetFrame == frame {
+            if shouldAnimate && frameAnimationID != nil { return }
+            if frameAnimationID == nil && frameMatchesTarget { return }
+        }
         targetFrame = frame
-        if animated && panel.isVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = model.expanded || model.islandNotice != nil ? 0.30 : 0.20
-                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 0.8, 0.24, 1)
-                panel.animator().setFrame(frame, display: true)
-            } completionHandler: { [weak self] in
-                self?.panel.invalidateShadow()
+        let animationID = UUID()
+        frameAnimationID = animationID
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = shouldAnimate ? (model.expanded || model.islandNotice != nil ? 0.30 : 0.20) : 0
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 0.8, 0.24, 1)
+            // A zero-duration proxy update also replaces any unfinished frame animation.
+            panel.animator().setFrame(frame, display: true)
+        } completionHandler: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.frameAnimationID == animationID else { return }
+                self.frameAnimationID = nil
+                self.panel.invalidateShadow()
+                self.restoreAnchorIfNeeded()
             }
-        } else {
-            panel.setFrame(frame, display: true)
-            panel.invalidateShadow()
         }
         if !model.expanded { panel.resignKey() }
+    }
+
+    private var frameMatchesTarget: Bool {
+        let actual = panel.frame
+        let tolerance = 1 / max(1, panel.backingScaleFactor)
+        return abs(actual.midX - targetFrame.midX) <= tolerance
+            && abs(actual.maxY - targetFrame.maxY) <= tolerance
+            && abs(actual.width - targetFrame.width) <= tolerance
+            && abs(actual.height - targetFrame.height) <= tolerance
+    }
+
+    private func restoreAnchorIfNeeded() {
+        guard frameAnimationID == nil, targetFrame != .zero, !frameMatchesTarget else { return }
+        Self.logger.notice("Correcting panel drift: expanded=\(self.model.expanded), actual=\(NSStringFromRect(self.panel.frame), privacy: .public), target=\(NSStringFromRect(self.targetFrame), privacy: .public)")
+        refresh()
     }
 }
