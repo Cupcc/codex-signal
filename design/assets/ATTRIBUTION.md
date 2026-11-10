@@ -1,5 +1,9 @@
 # 素材来源
 
+## 应用图标
+
+`app-icon.svg`、`app-icon.png` 与原生资源中的 `AppIcon.icns` 沿用本项目原创蓝色伙伴，使用独立的微笑表情与浅蓝圆角底板。运行 `python3 scripts/build_app_icon.py` 可从同一角色源代码重建全部图标尺寸，没有使用第三方图标素材。
+
 ## 默认圆润皮肤
 
 `toy-working.svg`、`toy-attention.svg`、`toy-idle.svg`、`toy-question.svg`、`toy-error.svg` 为本项目原创的蓝色括号伙伴，延续「团团」的资产命名。用户要求重新设计并以蓝色为主，本轮重新绘制头罩、冰蓝面罩与括号侧鳍，删除奶白方团、叶片、腮红、脚与键盘配件。主体保持蓝色，状态通过表情、侧鳍和局部标记表达。

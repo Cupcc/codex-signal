@@ -35,3 +35,7 @@
 - https://github.com/wxtsky/CodeIsland
 - https://github.com/Louis-CFM/coucou
 - https://github.com/sk-ruban/notchi
+
+# 排查手册
+
+处理窗口跳位、失焦、浮层关闭或动画中途异常时，先阅读 [排查手册](docs/playbooks/README.md) 和 [设置失焦后折叠跳位案例](docs/playbooks/2026-11-10-popover-collapse.md)，按其中的复现、取证和过程验证步骤定位原因。

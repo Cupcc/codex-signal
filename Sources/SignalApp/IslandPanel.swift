@@ -40,6 +40,8 @@ final class IslandPanel {
     private var screenID: NSNumber?
     private var targetFrame: NSRect = .zero
     private var frameAnimationID: UUID?
+    private var presentedPopover: NSPopover?
+    private var collapseAfterPopover = false
 
     init(model: AppModel) {
         self.model = model
@@ -88,6 +90,24 @@ final class IslandPanel {
                 guard self?.frameAnimationID == nil else { return }
                 DispatchQueue.main.async { self?.restoreAnchorIfNeeded() }
             }.store(in: &subscriptions)
+        Publishers.Merge(NotificationCenter.default.publisher(for: NSPopover.willShowNotification),
+                         NotificationCenter.default.publisher(for: NSPopover.didShowNotification))
+            .sink { [weak self] notification in
+                guard let self, self.presentedPopover == nil,
+                      let popover = notification.object as? NSPopover,
+                      self.contains(popover.contentViewController?.view.window) || self.contains(NSApp.keyWindow) else { return }
+                self.presentedPopover = popover
+            }.store(in: &subscriptions)
+        NotificationCenter.default.publisher(for: NSPopover.didCloseNotification)
+            .sink { [weak self] notification in
+                guard let self, let popover = notification.object as? NSPopover,
+                      popover === self.presentedPopover else { return }
+                self.presentedPopover = nil
+                if self.collapseAfterPopover {
+                    self.collapseAfterPopover = false
+                    self.collapse()
+                }
+            }.store(in: &subscriptions)
         NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)
             .sink { [weak self] notification in
                 guard let self, self.contains(notification.object as? NSWindow) else { return }
@@ -121,7 +141,7 @@ final class IslandPanel {
                 guard let self, event.window === self.panel, self.panel.isKeyWindow else { return false }
                 switch event.keyCode {
                 case 53:
-                    self.model.setExpanded(false)
+                    self.collapse()
                     return true
                 case 125:
                     self.model.moveSelection(1)
@@ -160,6 +180,12 @@ final class IslandPanel {
 
     private func collapse() {
         guard model.expanded else { return }
+        if let presentedPopover {
+            guard !collapseAfterPopover else { return }
+            collapseAfterPopover = true
+            presentedPopover.close()
+            return
+        }
         model.setExpanded(false)
     }
 

@@ -23,6 +23,8 @@ codesign --verify --deep --strict dist/CodexSignal.app
 
 另需将 ZIP 解压到临时目录验证其签名和启动，并挂载 DMG 检查应用和“应用程序”快捷方式。对外发布的文件必须来自最终提交中的源码。
 
+检查 Finder 中的蓝色伙伴图标。打开设置，确认版本及构建号；打开“关于”，确认图标、简介、版权和项目链接可见。第三方许可链接打开包内的 `Contents/Resources/ThirdParty` 目录。
+
 ## 上传 GitHub Release
 
 确认 `main` 工作区干净、检查通过后：

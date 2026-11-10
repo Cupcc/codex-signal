@@ -412,6 +412,12 @@ struct IslandView: View {
                 Text("\(model.runningCount) 运行中")
                 Text("·  \(model.readyCount) 待查看")
                 Spacer(minLength: 0)
+                Button("退出") { NSApp.terminate(nil) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .keyboardShortcut("q", modifiers: .command)
+                    .help("退出 Codex Signal（⌘Q）")
+                    .accessibilityLabel("退出 Codex Signal")
             }
             .font(.system(size: 11))
             .monospacedDigit()
@@ -632,6 +638,27 @@ struct IslandView: View {
             .font(.system(size: 11))
             Divider()
             UpdateSettingsView(updater: model.updater)
+            Divider()
+            HStack(spacing: 8) {
+                if let icon = AppProduct.icon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .frame(width: 32, height: 32)
+                        .accessibilityHidden(true)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(AppProduct.name)
+                    Text(AppProduct.versionLabel).foregroundStyle(.secondary)
+                }
+                .font(.caption)
+                Spacer()
+                Button("关于") { AppProduct.showAbout() }
+                    .accessibilityLabel("关于 Codex Signal")
+                Button("退出") { NSApp.terminate(nil) }
+                    .keyboardShortcut("q", modifiers: .command)
+                    .help("退出 Codex Signal（⌘Q）")
+                    .accessibilityLabel("退出 Codex Signal")
+            }
         }
         .padding(20)
         .frame(width: 350)

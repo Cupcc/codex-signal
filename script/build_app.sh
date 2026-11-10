@@ -47,6 +47,7 @@ done
 cp scripts/signal_bridge.py scripts/request_correlation.py "$APP/Contents/Resources/Bridge/"
 ditto ThirdParty "$APP/Contents/Resources/ThirdParty"
 cp VERSION BUILD_NUMBER "$APP/Contents/Resources/"
+cp Sources/SignalApp/Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -55,11 +56,16 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>CFBundleIdentifier</key><string>io.github.cupcc.CodexSignal</string>
 <key>CFBundleName</key><string>Codex Signal</string>
 <key>CFBundleDisplayName</key><string>Codex Signal</string>
+<key>CFBundleIconFile</key><string>AppIcon.icns</string>
+<key>CFBundleDevelopmentRegion</key><string>zh-Hans</string>
+<key>CFBundleLocalizations</key><array><string>zh-Hans</string></array>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleVersion</key><string>$BUILD_NUMBER</string>
 <key>CFBundleShortVersionString</key><string>$VERSION</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
+<key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
 <key>LSUIElement</key><true/>
+<key>NSHumanReadableCopyright</key><string>Copyright © 2026 Codex Signal contributors</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 <key>NSAppleEventsUsageDescription</key><string>用于定位终端标签页，或新建标签页并填入恢复命令，等待你按回车执行。</string>
 </dict></plist>

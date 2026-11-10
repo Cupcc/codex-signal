@@ -108,8 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func expandPanel() { model.setExpanded(true); panel.show() }
     @objc private func openData() { NSWorkspace.shared.open(model.dataDirectory) }
     @objc private func about() {
-        NSApp.orderFrontStandardAboutPanel(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        AppProduct.showAbout()
     }
     @objc private func quit() { NSApp.terminate(nil) }
 }

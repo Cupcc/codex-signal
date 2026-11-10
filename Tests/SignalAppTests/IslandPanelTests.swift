@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import Testing
 @testable import SignalApp
@@ -29,6 +30,50 @@ struct IslandPanelTests {
         #expect(abs(actual.midX - expected.midX) <= 0.5)
         #expect(abs(actual.width - expected.width) <= 0.5)
         #expect(abs(actual.height - expected.height) <= 0.5)
+    }
+
+    @Test(arguments: [20, 80, 400], [20, 80, 400])
+    func losingFocusClosesSettingsBeforeCollapsing(expansionDelay: Int, settingsDelay: Int) async throws {
+        try await withPanel { model, island, window in
+            island.show()
+            try await Task.sleep(for: .milliseconds(100))
+            let compact = window.frame
+            model.setExpanded(true)
+            try await Task.sleep(for: .milliseconds(expansionDelay))
+            window.makeKey()
+            model.updateSettingsRequested = true
+            try await Task.sleep(for: .milliseconds(settingsDelay))
+            for _ in 0..<50 {
+                if window.childWindows?.contains(where: { $0.isVisible }) == true { break }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            let visibleChild = window.childWindows?.first(where: { $0.isVisible })
+            let settingsWindow = try #require(visibleChild)
+            try #require(model.expanded)
+
+            var collapsedBeforeSettingsClosed = false
+            let expansion = model.$expanded.dropFirst().sink { expanded in
+                if !expanded, settingsWindow.parent != nil { collapsedBeforeSettingsClosed = true }
+            }
+            defer { expansion.cancel() }
+
+            var frames: [NSRect] = []
+            let observers = [NSWindow.didMoveNotification, NSWindow.didResizeNotification].map { name in
+                NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { _ in
+                    MainActor.assumeIsolated { frames.append(window.frame) }
+                }
+            }
+            defer { observers.forEach(NotificationCenter.default.removeObserver) }
+            NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
+            NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
+            try await Task.sleep(for: .milliseconds(1000))
+            #expect(!collapsedBeforeSettingsClosed)
+            #expect(!model.expanded)
+            #expect(!frames.isEmpty)
+            #expect(frames.allSatisfy { abs($0.maxY - compact.maxY) <= 0.5 })
+            #expect(frames.allSatisfy { abs($0.midX - compact.midX) <= 0.5 })
+            expectFrame(window.frame, matches: compact)
+        }
     }
 
     @Test func refreshAndShowRepairDisplacementWithUnchangedTarget() async throws {

@@ -1,3 +1,5 @@
+<img src="design/assets/app-icon.png" alt="Codex Signal 应用图标" width="96">
+
 # Codex Signal
 
 让 Codex 的运行、审批和提问状态，留在屏幕顶部。
@@ -17,6 +19,7 @@ Codex Signal 是一个原生 macOS 会话提醒工具：收起时是一只蓝色
 - **提醒管理**：关闭单条提醒，或使用“全部已读”清除已结束及异常提醒，保留运行中、待确认和待回答会话；支持按 7、15、30 天自动清理，重启后保留状态。
 - **灵动岛提示**：审批、提问、结束与异常会短暂展开，6 秒后自动收回；支持合并提醒、独立开关和设置内预览。静音时仍可看到提示。
 - **应用更新**：默认启动时及每 6 小时检查 GitHub 正式版，自动下载并校验，点击“重启并更新”安装。设置和菜单栏右键菜单始终提供 GitHub 手动下载入口。
+- **产品信息**：Finder 和“关于”窗口使用蓝色伙伴图标；设置底部显示版本与构建号，并提供“关于”按钮。“关于”提供项目主页、问题反馈和第三方许可入口。展开面板右下角可直接退出应用，支持 ⌘Q。
 - **原生动效**：折叠伙伴汇总全部会话状态，显示运行数量；展开高度适配列表内容，收起与展开时保持顶部居中。伙伴随状态变化，支持系统“减少动态效果”设置。
 
 关闭提醒不会取消任务，也不会代替回答或审批。“本轮结束”只表示运行结束，不代表测试成功。
@@ -94,6 +97,8 @@ cd codex-signal
 
 产物位于 `dist/CodexSignal.app`。还支持 `--build`（只构建）、`--verify`（启动检查）、`--debug`、`--logs` 和 `--telemetry`。Codex 项目的 Run 按钮调用同一个构建运行脚本。安装 [just](https://just.systems/) 后，也可使用 `just dev`、`just test`、`just release` 等快捷命令。
 
+应用图标沿用原创蓝色伙伴，由 `python3 scripts/build_app_icon.py` 重建 SVG、1024px PNG 和包含 16–1024px 尺寸的 `AppIcon.icns`。打包脚本将图标复制到 App 资源目录，并写入图标、应用类别、语言及版权信息。应用常驻菜单栏，不在 Dock 中显示。
+
 验证打包应用：
 
 ```sh
@@ -102,9 +107,11 @@ python3 scripts/verify_runtime.py --check-speech
 
 该检查使用临时目录和人工事件；语音检查预期保持安静。
 
+窗口跳位、失焦和浮层关闭问题的排查步骤见 [排查手册](docs/playbooks/README.md)。[设置失焦后折叠跳位的记录](docs/playbooks/2026-11-10-popover-collapse.md) 包含无效尝试、关闭时序证据和回归验证。
+
 ## 构建发布包
 
-版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.4.1（Build 5）**，“关于 Codex Signal”中可查看。
+版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.5.0（Build 6）**，“关于 Codex Signal”中可查看。
 
 ```sh
 ./script/release.sh
@@ -116,8 +123,8 @@ python3 scripts/verify_runtime.py --check-speech
 
 ```text
 dist/releases/
-├── CodexSignal-0.4.1-universal.dmg
-├── CodexSignal-0.4.1-universal.zip
+├── CodexSignal-0.5.0-universal.dmg
+├── CodexSignal-0.5.0-universal.zip
 └── SHA256SUMS.txt
 ```
 
@@ -133,6 +140,7 @@ dist/releases/
 | `script` | 构建、测试和发布入口 |
 | `Tests` | Swift 测试 |
 | `specs` | 产品规格、模块契约与历史验收记录 |
+| `docs/playbooks` | 可复用的排查步骤与故障记录 |
 | `design` | 设计源文件与历史静态稿 |
 
 历史验收记录中的 `.audit/` 是开发机本地证据，不随仓库发布。设计稿只作为设计资料，应用能力以源码和当前接入边界为准。
