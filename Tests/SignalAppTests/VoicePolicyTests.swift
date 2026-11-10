@@ -20,20 +20,10 @@ struct VoicePolicyTests {
     }
 
     @Test func testOrdinaryChildCompletionAndInterruptStaySilent() {
-        #expect(VoicePolicy.clip(for: [event(.completed, child: true)]) == nil)
-        #expect(VoicePolicy.clip(for: [event(.stopped)]) == nil)
-        #expect(VoicePolicy.clip(for: [event(.started)]) == nil)
-        #expect(VoicePolicy.clip(for: [event(.approval, child: true)]) != nil)
-    }
-
-    @Test func testMultipleSessionsMergeWithoutReadingProjectOrBody() {
-        #expect(VoicePolicy.clip(for: [event(.approval), event(.completed, session: "b")]) == .multipleAttention)
-        #expect(VoicePolicy.clip(for: [event(.completed), event(.completed, session: "b")]) == .multipleCompleted)
-    }
-
-    @Test func testHumanRequestTakesPriorityWithinOneSession() {
-        #expect(VoicePolicy.clip(for: [event(.completed), event(.question)]) == .question)
-        #expect(VoicePolicy.clip(for: [event(.failed), event(.approval)]) == .approval)
+        #expect(VoicePolicy.clip(for: event(.completed, child: true)) == nil)
+        #expect(VoicePolicy.clip(for: event(.stopped)) == nil)
+        #expect(VoicePolicy.clip(for: event(.started)) == nil)
+        #expect(VoicePolicy.clip(for: event(.approval, child: true)) != nil)
     }
 
     @Test func testSingleSessionUsesCustomFileNames() throws {
@@ -44,7 +34,7 @@ struct VoicePolicyTests {
             (.completed, "codex-completed.mp3")
         ]
         for (kind, filename) in cases {
-            let clip = try #require(VoicePolicy.clip(for: [event(kind)]))
+            let clip = try #require(VoicePolicy.clip(for: event(kind)))
             #expect(clip.url?.lastPathComponent == filename)
         }
     }
@@ -62,6 +52,57 @@ struct VoicePolicyTests {
             let player = try AVAudioPlayer(contentsOf: url)
             #expect(player.duration > 0)
         }
+    }
+
+    @Test @MainActor func testFirstEventPlaysImmediately() {
+        let speech = SpeechController(volume: 0)
+        speech.allowed = { true }
+        var phrases: [String] = []
+        speech.didSpeak = { phrases.append($0) }
+        defer { speech.cancel() }
+
+        speech.enqueue(event(.approval))
+
+        #expect(phrases == [VoiceClip.approval.phrase])
+    }
+
+    @Test @MainActor func testCloselySpacedEventsPlayIndividually() async throws {
+        let speech = SpeechController(volume: 0)
+        speech.allowed = { true }
+        var phrases: [String] = []
+        speech.didSpeak = { phrases.append($0) }
+        defer { speech.cancel() }
+
+        speech.enqueue(event(.approval))
+        speech.enqueue(event(.question, session: "b"))
+        speech.enqueue(event(.failed, session: "c"))
+        #expect(phrases == [VoiceClip.approval.phrase])
+
+        let clips: [VoiceClip] = [.approval, .question]
+        let duration = try clips.reduce(0.0) {
+            try $0 + AVAudioPlayer(contentsOf: #require($1.url)).duration
+        }
+        let deadline = Date().addingTimeInterval(duration + 3)
+        while phrases.count < 3 && Date() < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(phrases == [VoiceClip.approval.phrase, VoiceClip.question.phrase, VoiceClip.failed.phrase])
+    }
+
+    @Test @MainActor func testStateChangesRemoveObsoleteQueuedSpeechAndCancellationAdvancesPlayback() {
+        let speech = SpeechController(volume: 0)
+        speech.allowed = { true }
+        var phrases: [String] = []
+        speech.didSpeak = { phrases.append($0) }
+        defer { speech.cancel() }
+
+        speech.enqueue(event(.approval))
+        speech.enqueue(event(.approval, session: "b"))
+        speech.enqueue(event(.started, session: "b"))
+        speech.enqueue(event(.question, session: "c"))
+        speech.cancel(sessionID: "cli:a")
+
+        #expect(phrases == [VoiceClip.approval.phrase, VoiceClip.question.phrase])
     }
 
     @Test @MainActor func testPreviewsPlaySeriallyAndCancelClearsQueue() async throws {

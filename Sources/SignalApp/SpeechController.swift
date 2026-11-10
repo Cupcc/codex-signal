@@ -7,8 +7,6 @@ enum VoiceClip: String, CaseIterable {
     case question = "codex-question"
     case failed = "codex-failed"
     case completed = "codex-completed"
-    case multipleCompleted = "multiple-completed"
-    case multipleAttention = "multiple-attention"
 
     var phrase: String {
         switch self {
@@ -16,8 +14,6 @@ enum VoiceClip: String, CaseIterable {
         case .question: return "Codex 等待回答。"
         case .failed: return "Codex 运行失败。"
         case .completed: return "Codex 本轮已结束。"
-        case .multipleCompleted: return "有多个任务本轮已结束。"
-        case .multipleAttention: return "有多个任务需要你处理。"
         }
     }
 
@@ -33,21 +29,14 @@ struct VoicePolicy {
         return start < end ? hour >= start && hour < end : hour >= start || hour < end
     }
 
-    static func clip(for events: [SignalEvent]) -> VoiceClip? {
-        let audible = events.filter {
-            [.approval, .question, .failed, .completed].contains($0.kind)
-                && !($0.isChild && $0.kind == .completed)
+    static func clip(for event: SignalEvent) -> VoiceClip? {
+        switch event.kind {
+        case .approval: return .approval
+        case .question: return .question
+        case .failed: return .failed
+        case .completed: return event.isChild ? nil : .completed
+        default: return nil
         }
-        guard !audible.isEmpty else { return nil }
-        if Set(audible.map { "\($0.source.rawValue):\($0.sessionId)" }).count > 1 {
-            if audible.allSatisfy({ $0.kind == .completed }) { return .multipleCompleted }
-            return .multipleAttention
-        }
-        let kinds = Set(audible.map(\.kind))
-        if kinds.contains(.approval) { return .approval }
-        if kinds.contains(.question) { return .question }
-        if kinds.contains(.failed) { return .failed }
-        return .completed
     }
 }
 
@@ -55,14 +44,12 @@ struct VoicePolicy {
 final class SpeechController: NSObject, AVAudioPlayerDelegate {
     private struct Playback {
         let clip: VoiceClip
-        let sessionIDs: Set<String>
+        let sessionID: String?
     }
 
     private var player: AVAudioPlayer?
-    private var events: [SignalEvent] = []
     private var queue: [Playback] = []
-    private var speakingSessions: Set<String> = []
-    private var timer: Timer?
+    private var speakingSessionID: String?
     private let volume: Float
     var allowed: () -> Bool = { false }
     var didSpeak: (String) -> Void = { _ in }
@@ -94,21 +81,10 @@ final class SpeechController: NSObject, AVAudioPlayerDelegate {
     }
 
     func enqueue(_ event: SignalEvent) {
-        events.removeAll { $0.source == event.source && $0.sessionId == event.sessionId }
-        guard allowed(), !sceneQuiet, VoicePolicy.clip(for: [event]) != nil else { return }
-        events.append(event)
-        guard timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { [weak self] _ in
-            Task { @MainActor in self?.flush() }
-        }
-    }
-
-    private func flush() {
-        timer = nil
-        let pending = events
-        events.removeAll()
-        guard allowed(), !sceneQuiet, let clip = VoicePolicy.clip(for: pending) else { return }
-        speak(clip, sessionIDs: Set(pending.map { $0.source.rawValue + ":" + $0.sessionId }))
+        let sessionID = event.source.rawValue + ":" + event.sessionId
+        queue.removeAll { $0.sessionID == sessionID }
+        guard allowed(), !sceneQuiet, let clip = VoicePolicy.clip(for: event) else { return }
+        speak(clip, sessionID: sessionID)
     }
 
     func preview() {
@@ -116,8 +92,8 @@ final class SpeechController: NSObject, AVAudioPlayerDelegate {
         speak(.approval)
     }
 
-    private func speak(_ clip: VoiceClip, sessionIDs: Set<String> = []) {
-        queue.append(Playback(clip: clip, sessionIDs: sessionIDs))
+    private func speak(_ clip: VoiceClip, sessionID: String? = nil) {
+        queue.append(Playback(clip: clip, sessionID: sessionID))
         playNext()
     }
 
@@ -142,7 +118,7 @@ final class SpeechController: NSObject, AVAudioPlayerDelegate {
                     continue
                 }
                 player = audio
-                speakingSessions = next.sessionIDs
+                speakingSessionID = next.sessionID
                 didSpeak(next.clip.phrase)
                 return
             } catch {
@@ -152,16 +128,11 @@ final class SpeechController: NSObject, AVAudioPlayerDelegate {
     }
 
     func cancel(sessionID: String) {
-        events.removeAll { $0.source.rawValue + ":" + $0.sessionId == sessionID }
-        if events.isEmpty {
-            timer?.invalidate()
-            timer = nil
-        }
-        queue.removeAll { $0.sessionIDs.contains(sessionID) }
-        if speakingSessions.contains(sessionID) {
+        queue.removeAll { $0.sessionID == sessionID }
+        if speakingSessionID == sessionID {
             player?.stop()
             player = nil
-            speakingSessions.removeAll()
+            speakingSessionID = nil
             playNext()
         }
     }
@@ -180,16 +151,13 @@ final class SpeechController: NSObject, AVAudioPlayerDelegate {
     private func finished(playerID: ObjectIdentifier) {
         guard let player, ObjectIdentifier(player) == playerID else { return }
         self.player = nil
-        speakingSessions.removeAll()
+        speakingSessionID = nil
         playNext()
     }
 
     func cancel() {
-        timer?.invalidate()
-        timer = nil
-        events.removeAll()
         queue.removeAll()
-        speakingSessions.removeAll()
+        speakingSessionID = nil
         player?.stop()
         player = nil
     }

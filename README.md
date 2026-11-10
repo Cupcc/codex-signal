@@ -12,7 +12,7 @@ Codex Signal 是一个原生 macOS 会话提醒工具：收起时是一只蓝色
 
 - **会话状态**：运行中、待确认、待回答、待查看、停止与异常；支持“全部 / 待处理 / 待查看”筛选。完成结果会保留待查看标记，直到标记已查看、关闭提醒或按保留期限清理。
 - **返回会话**：打开 Codex 桌面会话，或定位 Terminal、iTerm2、Ghostty 中对应的 CLI 标签页。定位失败时，在可用终端的新标签页填入恢复命令，按回车继续；失败时保留复制的命令。可设置首选终端。
-- **语音提醒**：播放内置中文音频，合并短时间内的提醒；支持静音、安静时段和锁屏暂停。音频位于 `Sources/SignalApp/Resources/Audio`，设置中的「预览提醒」播放 `codex-approval.mp3`。
+- **语音提醒**：立即播放对应状态的内置中文音频，播放期间到达的提醒按顺序播放；支持静音、安静时段和锁屏暂停。音频位于 `Sources/SignalApp/Resources/Audio`，设置中的「预览提醒」播放 `codex-approval.mp3`。
 - **轻量交互**：方向键选择、Return 执行主动作、Escape 收起；查看历史时保留滚动位置。
 - **提醒管理**：关闭单条提醒，或使用“全部已读”清除已结束及异常提醒，保留运行中、待确认和待回答会话；支持按 7、15、30 天自动清理，重启后保留状态。
 - **灵动岛提示**：审批、提问、结束与异常会短暂展开，6 秒后自动收回；支持合并提醒、独立开关和设置内预览。静音时仍可看到提示。
@@ -104,7 +104,7 @@ python3 scripts/verify_runtime.py --check-speech
 
 ## 构建发布包
 
-版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.4.0（Build 4）**，“关于 Codex Signal”中可查看。
+版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.4.1（Build 5）**，“关于 Codex Signal”中可查看。
 
 ```sh
 ./script/release.sh
@@ -116,8 +116,8 @@ python3 scripts/verify_runtime.py --check-speech
 
 ```text
 dist/releases/
-├── CodexSignal-0.4.0-universal.dmg
-├── CodexSignal-0.4.0-universal.zip
+├── CodexSignal-0.4.1-universal.dmg
+├── CodexSignal-0.4.1-universal.zip
 └── SHA256SUMS.txt
 ```
 

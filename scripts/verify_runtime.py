@@ -113,7 +113,7 @@ class RuntimeCheck:
         time.sleep(3.5)
         assert self.snapshot()["speechCount"] == 0, "startup backlog replayed voice"
         if check_speech:
-            self.passed("startup backlog does not replay voice", "speech was enabled and speechCount stayed zero beyond the aggregation window")
+            self.passed("startup backlog does not replay voice", "speech was enabled and speechCount stayed zero during the observation period")
         else:
             self.results.append({"name": "startup voice suppression", "status": "NOT VERIFIED", "evidence": "speech disabled; rerun with --check-speech to distinguish startup suppression from mute"})
         self.stop()
@@ -167,7 +167,7 @@ class RuntimeCheck:
         assert self.snapshot()["speechCount"] == 0, "restart replayed voice"
         self.passed("restart restores state", "session records are identical across process restart")
         if check_speech:
-            self.passed("restart does not replay voice", "speech was enabled and speechCount stayed zero beyond the aggregation window")
+            self.passed("restart does not replay voice", "speech was enabled and speechCount stayed zero during the observation period")
         else:
             self.results.append({"name": "restart voice suppression", "status": "NOT VERIFIED", "evidence": "speech disabled; rerun with --check-speech for audible policy verification"})
 
