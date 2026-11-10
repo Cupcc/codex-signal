@@ -14,7 +14,7 @@ struct IslandView: View {
     private let muted = Color(red: 0.61, green: 0.65, blue: 0.71)
     private var layout: IslandLayout { layoutState.layout }
     private var motion: Animation? { reduceMotion ? nil : .easeInOut(duration: 0.18) }
-    private var outline: IslandOutline { IslandOutline(attached: layout.topInset > 0, radius: model.expanded ? 22 : 13) }
+    private var outline: IslandOutline { IslandOutline(attached: layout.topInset > 0, radius: model.expanded || model.islandNotice != nil ? 22 : 13) }
 
     var body: some View {
         GeometryReader { geometry in
@@ -26,8 +26,10 @@ struct IslandView: View {
                     .opacity(model.expanded ? 1 : 0)
                     .allowsHitTesting(model.expanded)
                     .accessibilityHidden(!model.expanded)
-                compactContent
-                    .frame(width: layout.compactSize.width, height: layout.compactSize.height)
+                collapsedContent
+                    .frame(width: model.islandNotice == nil ? layout.compactSize.width : layout.noticeSize.width,
+                           height: model.islandNotice == nil ? layout.compactSize.height : layout.noticeSize.height,
+                           alignment: .top)
                     .opacity(model.expanded ? 0 : 1)
                     .allowsHitTesting(!model.expanded)
                     .accessibilityHidden(model.expanded)
@@ -35,12 +37,13 @@ struct IslandView: View {
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
             .background(layout.topInset > 0 ? Color.black : Color(red: 0.045, green: 0.052, blue: 0.065))
             .overlay {
-                outline.stroke(Color.white.opacity(0.15), lineWidth: 1)
+                outline.stroke(model.islandNotice.map { PhaseAppearance($0.primary.phase).color.opacity(0.55) } ?? Color.white.opacity(0.15), lineWidth: 1)
                     .mask(Rectangle().padding(.top, layout.topInset > 0 ? 1 : 0))
                     .allowsHitTesting(false)
             }
             .clipShape(outline)
             .animation(motion, value: model.expanded)
+            .animation(motion, value: model.islandNotice?.id)
         }
         .preferredColorScheme(.dark)
         .onChange(of: model.expanded) { _, expanded in
@@ -116,7 +119,7 @@ struct IslandView: View {
     private var statusBar: some View {
         HStack(spacing: 0) {
             HStack(spacing: 5) {
-                MascotView(phase: model.activeSessions.first(where: { $0.pending })?.phase ?? model.activeSessions.first?.phase ?? .completed,
+                MascotView(phase: model.aggregatePhase,
                            size: 22, motionActive: model.expanded)
                 if !layout.headerUsesNotchSpace {
                     Text("Codex Signal").font(.system(size: 12, weight: .semibold))
@@ -294,16 +297,16 @@ struct IslandView: View {
         VStack(alignment: .leading, spacing: 9) {
             Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1)
             HStack(spacing: 4) {
-                Text(String(session.sessionId.prefix(12)))
+                Text(String(session.sessionId.prefix(8)))
                     .font(.system(size: 10, design: .monospaced))
-                Button { model.copySessionID(session) } label: {
+                Button { model.copyResumeCommand(session) } label: {
                     Image(systemName: "doc.on.doc").frame(width: 24, height: 22)
                 }
                 .buttonStyle(IslandButtonStyle())
-                .help("复制会话标识")
-                .accessibilityLabel("复制会话标识")
+                .help("复制恢复命令")
+                .accessibilityLabel("复制恢复命令")
                 .overlay(alignment: .top) {
-                    feedbackBubble(for: session, anchor: .copyID).alignmentGuide(.top) { $0[.bottom] + 6 }
+                    feedbackBubble(for: session, anchor: .copyResume).alignmentGuide(.top) { $0[.bottom] + 6 }
                 }
                 Spacer(minLength: 0)
                 if session.unread {
@@ -364,7 +367,7 @@ struct IslandView: View {
             Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1)
             HStack(spacing: 5) {
                 Circle().fill(model.activeSessions.contains(where: { $0.phase == .running }) ? Color(red: 0.48, green: 0.73, blue: 0.66) : muted).frame(width: 4, height: 4)
-                Text("\(model.activeSessions.filter { $0.phase == .running }.count) 运行中")
+                Text("\(model.runningCount) 运行中")
                 Text("·  \(model.unreadCount) 待查看")
                 Spacer(minLength: 0)
             }
@@ -405,20 +408,78 @@ struct IslandView: View {
         .frame(maxWidth: .infinity)
     }
 
+    private var collapsedContent: some View {
+        VStack(spacing: 0) {
+            compactContent
+                .frame(width: layout.compactSize.width, height: layout.compactSize.height)
+            if let notice = model.islandNotice {
+                noticeContent(notice)
+                    .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: -5)))
+            }
+        }
+    }
+
+    private func noticeContent(_ notice: IslandNotice) -> some View {
+        let session = notice.primary
+        let appearance = PhaseAppearance(session.phase)
+        return HStack(spacing: 8) {
+            Button { model.openIslandNotice() } label: {
+                HStack(spacing: 12) {
+                    MascotView(phase: session.phase, size: 36, motionActive: !model.expanded)
+                        .id(session.id + session.turnId + (session.requestId ?? "") + session.phase.rawValue)
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 6) {
+                            Image(systemName: session.phase == .completed ? "checkmark.circle" : appearance.symbol)
+                                .symbolEffect(.bounce, options: .nonRepeating, value: notice.id)
+                                .symbolEffectsRemoved(reduceMotion)
+                            Text(appearance.title).fontWeight(.semibold)
+                            if notice.sessions.count > 1 {
+                                Text("· \(notice.sessions.count) 条提醒").foregroundStyle(muted)
+                            }
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(appearance.color)
+                        Text(session.title.map { "\(session.project) · \($0)" } ?? session.project)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.white.opacity(0.8))
+                    }
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.right").font(.system(size: 10)).foregroundStyle(muted)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(IslandButtonStyle())
+            .help("查看会话：\(session.displayTitle)")
+            .accessibilityLabel("\(appearance.title)，\(session.displayTitle)，\(notice.sessions.count) 条提醒，查看会话")
+            Button { model.dismissIslandNotice() } label: {
+                Image(systemName: "xmark").font(.system(size: 10, weight: .medium))
+                    .frame(width: 24, height: 28)
+            }
+            .buttonStyle(IslandButtonStyle())
+            .foregroundStyle(muted)
+            .help("收起提示")
+            .accessibilityLabel("收起提示")
+        }
+        .padding(.horizontal, 20)
+        .frame(height: 78)
+    }
+
     private var compactContent: some View {
         Button { model.setExpanded(true) } label: {
             HStack(spacing: 0) {
                 HStack(spacing: 5) {
-                    MascotView(phase: model.activeSessions.first(where: { $0.pending })?.phase ?? model.activeSessions.first?.phase ?? .completed,
+                    MascotView(phase: model.aggregatePhase,
                                size: 22, motionActive: !model.expanded)
-                    Text("\(activeCount)").foregroundStyle(muted)
+                    Text("\(model.runningCount)")
+                        .foregroundStyle(model.runningCount > 0 ? PhaseAppearance(.running).color : muted)
                         .contentTransition(.numericText())
                 }
                 .frame(maxWidth: .infinity)
                 if layout.notchWidth > 0 { Color.clear.frame(width: layout.notchWidth) }
                 HStack(spacing: 5) {
-                    Image(systemName: model.pendingCount > 0 ? "exclamationmark.circle.fill" : "checkmark.circle")
-                    Text("\(model.pendingCount)").contentTransition(.numericText())
+                    Image(systemName: model.pendingCount > 0 ? "exclamationmark.circle.fill" : "tray")
+                    Text("\(model.pendingCount > 0 ? model.pendingCount : model.unreadCount)").contentTransition(.numericText())
                     Image(systemName: "chevron.down").font(.system(size: 8)).foregroundStyle(muted)
                 }
                 .foregroundStyle(model.pendingCount > 0 ? Color.orange : muted)
@@ -432,8 +493,8 @@ struct IslandView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(IslandButtonStyle())
-        .help("\(activeCount) 个会话 · \(model.pendingCount) 个待处理，点击展开")
-        .accessibilityLabel("展开 Codex Signal，\(activeCount) 个会话，\(model.pendingCount) 个待处理")
+        .help("\(model.runningCount) 个运行中 · \(model.pendingCount) 个待处理 · \(model.unreadCount) 个未查看，点击展开")
+        .accessibilityLabel("展开 Codex Signal，\(model.runningCount) 个运行中，\(model.pendingCount) 个待处理，\(model.unreadCount) 个未查看")
     }
 
     private var settings: some View {
@@ -448,7 +509,11 @@ struct IslandView: View {
             Divider()
             HStack {
                 Toggle("中文语音提醒", isOn: $model.speechEnabled)
-                HelpButton(title: "语音提醒说明", message: "仅关闭语音；重新开启不补播。")
+                HelpButton(title: "语音提醒说明", message: "仅关闭语音；灵动岛仍可提示。重新开启不补播。")
+            }
+            HStack {
+                Toggle("灵动岛提示", isOn: $model.islandAlertsEnabled)
+                HelpButton(title: "灵动岛提示说明", message: "新提醒短暂展开，6 秒后收起。待处理标记会保留；关闭提示不影响状态动画。")
             }
             HStack {
                 Toggle("勿扰时段", isOn: $model.quietHoursEnabled)
@@ -473,7 +538,7 @@ struct IslandView: View {
                 HelpButton(title: "自动清理说明", message: "按最后一次状态更新计算，清理所有到期提醒。有新状态时会再次显示。")
             }
             HStack {
-                Button("试听") { model.previewVoice() }
+                Button("预览提醒") { model.previewIslandNotice() }
                 Spacer()
                 ConnectionHelpButton(dataDirectory: model.dataDirectory)
             }

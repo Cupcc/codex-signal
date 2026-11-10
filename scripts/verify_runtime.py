@@ -90,7 +90,9 @@ class RuntimeCheck:
         self.settings()
         self.launch()
         self.send(self.event("started"))
-        self.expect_phase("running")
+        value = self.expect_phase("running")
+        assert value["aggregatePhase"] == "running" and value["runningCount"] == 1
+        assert value["islandNoticeID"] is None, "ordinary work opened an interruption"
         self.stop()
 
         self.settings(enabled=check_speech)
@@ -106,6 +108,7 @@ class RuntimeCheck:
         self.launch()
         self.wait(lambda value: len(value.get("sessions", [])) == 241 and not list(inbox.glob("*.json")), "242 startup events did not drain", timeout=30)
         self.expect_phase("question")
+        assert self.snapshot()["islandNoticeID"] is None, "startup backlog replayed island alerts"
         self.passed("startup backlog preserves event order", "242 events with filenames in reverse chronological order reached the latest question")
         time.sleep(3.5)
         assert self.snapshot()["speechCount"] == 0, "startup backlog replayed voice"
@@ -120,11 +123,15 @@ class RuntimeCheck:
         self.send(self.event("resumed", turn="turn-1", request="backlog-question"))
         self.expect_phase("running")
         self.send(self.event("approval", turn="turn-1", request="approval-one"))
-        self.expect_phase("approval")
+        value = self.expect_phase("approval")
+        assert value["islandNoticePhase"] == "approval", "muted approval did not show an island alert"
+        assert value["expanded"] is False, "automatic alert opened the full session list"
+        self.passed("muted approval shows a compact island alert", "visual reminder is independent of speech and does not open the full list")
         self.send(self.event("resumed", turn="turn-1", request="wrong-request"))
         self.expect_phase("approval")
         self.send(self.event("resumed", turn="turn-1", request="approval-one"))
-        self.expect_phase("running")
+        value = self.expect_phase("running")
+        assert value["islandNoticeID"] is None, "resolved approval stayed on the island"
         self.send(self.event("started", turn="turn-2"))
         question = self.event("question", turn="turn-2", request="question-two")
         self.send(question)
@@ -139,6 +146,7 @@ class RuntimeCheck:
         after = self.snapshot()
         assert before["sessions"] == after["sessions"], "duplicate changed session state"
         assert before["speechCount"] == after["speechCount"], "duplicate changed voice count"
+        assert before["islandNoticeID"] == after["islandNoticeID"], "duplicate replayed island animation"
         self.passed("duplicate event leaves state unchanged", "session records and speech count are identical after replaying the same event")
 
         metadata = dict(question, title="核对会话标题与等待状态", eventId=uuid.uuid4().hex)

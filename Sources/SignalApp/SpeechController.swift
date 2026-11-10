@@ -16,6 +16,7 @@ struct VoicePolicy {
         }
         guard !audible.isEmpty else { return nil }
         if Set(audible.map { "\($0.source.rawValue):\($0.sessionId)" }).count > 1 {
+            if audible.allSatisfy({ $0.kind == .completed }) { return "有多个任务本轮已结束。" }
             return "有多个任务需要你处理。"
         }
         let kinds = Set(audible.map(\.kind))

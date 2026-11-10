@@ -4,18 +4,19 @@
 
 Codex Signal 是一个原生 macOS 会话提醒工具：收起时是一只蓝色伙伴，展开后查看多个会话，并回到需要处理的任务。界面和系统语音均为中文。
 
-[下载 v0.1.0](https://github.com/Cupcc/codex-signal/releases/tag/v0.1.0) · [接入指南](specs/CONNECT.md) · [更新记录](CHANGELOG.md)
+[下载 v0.2.0](https://github.com/Cupcc/codex-signal/releases/tag/v0.2.0) · [接入指南](specs/CONNECT.md) · [更新记录](CHANGELOG.md)
 
 <img src="exports/mascot-motion/mascot-five-states.gif" alt="蓝色伙伴的工作、休息、审批、提问和异常五种动效" width="720">
 
 ## 功能
 
 - **会话状态**：运行中、待确认、待回答、本轮结束、停止与异常；支持只看待处理会话。
-- **返回会话**：打开 Codex 桌面会话，或定位 Terminal、iTerm2、Ghostty 中对应的 CLI 标签页。可设置首选终端。
+- **返回会话**：打开 Codex 桌面会话，或定位 Terminal、iTerm2、Ghostty 中对应的 CLI 标签页。定位失败时，在可用终端的新标签页填入恢复命令，按回车继续；失败时保留复制的命令。可设置首选终端。
 - **语音提醒**：使用 macOS 中文语音，合并短时间内的提醒；支持静音、安静时段和锁屏暂停。
 - **轻量交互**：方向键选择、Return 执行主动作、Escape 收起；查看历史时保留滚动位置。
 - **提醒管理**：关闭单条提醒，或按 7、15、30 天自动清理；重启后保留状态。
-- **原生动效**：伙伴随状态变化，支持系统“减少动态效果”设置。
+- **灵动岛提示**：审批、提问、结束与异常会短暂展开，6 秒后自动收回；支持合并提醒、独立开关和设置内预览。静音时仍可看到提示。
+- **原生动效**：折叠伙伴汇总全部会话状态，显示运行数量；伙伴随状态变化，支持系统“减少动态效果”设置。
 
 关闭提醒不会取消任务，也不会代替回答或审批。“本轮结束”只表示运行结束，不代表测试成功。
 
@@ -31,7 +32,7 @@ Codex Signal 是一个原生 macOS 会话提醒工具：收起时是一只蓝色
 open -n /Applications/CodexSignal.app --args --demo
 ```
 
-**首版使用 ad-hoc 签名，尚未通过 Apple 公证。** 首次打开若被系统阻止，请在“系统设置 → 隐私与安全性”中查看“仍要打开”。若系统提示应用损坏，确认下载来源和 SHA-256 后，可仅移除该应用的隔离标记再打开：
+**当前版本使用 ad-hoc 签名，尚未通过 Apple 公证。** 首次打开若被系统阻止，请在“系统设置 → 隐私与安全性”中查看“仍要打开”。若系统提示应用损坏，确认下载来源和 SHA-256 后，可仅移除该应用的隔离标记再打开：
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/CodexSignal.app
@@ -68,6 +69,8 @@ CLI 的开始、结束、审批、提问、中断和等待解除已有本地真�
 
 内置桥不会从一次工具报错推断整轮失败；提问提醒取决于客户端是否发出相应 Hook。详情见 [真实接入记录](specs/LIVE-VERIFICATION.md) 与 [CLI 来源和导航](specs/CLI-SOURCE-FIX.md)。
 
+共享服务会话每 5 秒核对一次轮次状态，补回漏收的结束、中断或失败事件；修正不播报，也不会重新打开已关闭的提醒。独立 CLI 仍依赖 Hooks。范围与依据见 [运行状态修复记录](specs/RUNTIME-STATUS-FIX.md)。
+
 ## 本地数据
 
 状态、设置与事件保存在 `~/Library/Application Support/Codex Signal`。演示模式使用独立临时目录。右键菜单栏选择“打开数据目录”可查看本地文件。
@@ -98,7 +101,7 @@ python3 scripts/verify_runtime.py --check-speech
 
 ## 构建发布包
 
-版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.1.0（Build 1）**，“关于 Codex Signal”中可查看。
+版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.2.0（Build 2）**，“关于 Codex Signal”中可查看。
 
 ```sh
 ./script/release.sh
@@ -108,8 +111,8 @@ python3 scripts/verify_runtime.py --check-speech
 
 ```text
 dist/releases/
-├── CodexSignal-0.1.0-universal.dmg
-├── CodexSignal-0.1.0-universal.zip
+├── CodexSignal-0.2.0-universal.dmg
+├── CodexSignal-0.2.0-universal.zip
 └── SHA256SUMS.txt
 ```
 

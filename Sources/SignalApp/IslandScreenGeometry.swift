@@ -38,6 +38,7 @@ struct IslandLayout: Equatable {
     var topInset: CGFloat = 0
     var compactSize = CGSize(width: 164, height: 32)
     var expandedSize = CGSize(width: 404, height: 458)
+    var noticeSize = CGSize(width: 360, height: 110)
 
     var headerUsesNotchSpace: Bool {
         topInset > 0 && expandedSize.width >= notchWidth + 2 * (Self.headerSideInset + Self.headerControlsWidth)
@@ -56,12 +57,14 @@ struct IslandLayout: Equatable {
         let contentHeight = sessionCount == 0 ? 274 : 242 + CGFloat(min(4, max(1, sessionCount))) * 72
         let extraHeaderHeight = headerUsesNotchSpace ? max(0, topInset - 32) : topInset
         expandedSize.height = min(heightLimit, contentHeight + extraHeaderHeight)
+        noticeSize = CGSize(width: min(widthLimit, max(360, compactSize.width)),
+                            height: min(heightLimit, compactSize.height + 78))
     }
 
-    func size(expanded: Bool) -> CGSize { expanded ? expandedSize : compactSize }
+    func size(expanded: Bool, alerting: Bool = false) -> CGSize { expanded ? expandedSize : alerting ? noticeSize : compactSize }
 
-    func frame(expanded: Bool, centerX: CGFloat, top: CGFloat, scale: CGFloat) -> CGRect {
-        let size = size(expanded: expanded)
+    func frame(expanded: Bool, alerting: Bool = false, centerX: CGFloat, top: CGFloat, scale: CGFloat) -> CGRect {
+        let size = size(expanded: expanded, alerting: alerting)
         let pixelScale = max(1, scale)
         // Align to physical pixels; a fractional left edge makes the border fuzzy.
         return CGRect(x: ((centerX - size.width / 2) * pixelScale).rounded() / pixelScale,

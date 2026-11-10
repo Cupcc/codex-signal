@@ -27,6 +27,7 @@ struct VoicePolicyTests {
 
     @Test func testMultipleSessionsMergeWithoutReadingProjectOrBody() {
         #expect(VoicePolicy.phrase(for: [event(.approval), event(.completed, session: "b")]) == "有多个任务需要你处理。")
+        #expect(VoicePolicy.phrase(for: [event(.completed), event(.completed, session: "b")]) == "有多个任务本轮已结束。")
     }
 
     @Test func testHumanRequestTakesPriorityWithinOneSession() {

@@ -60,6 +60,9 @@ final class IslandPanel {
         model.$expanded.removeDuplicates().sink { [weak self] _ in
             DispatchQueue.main.async { self?.refresh(animated: true) }
         }.store(in: &subscriptions)
+        model.$islandNotice.removeDuplicates().sink { [weak self] _ in
+            DispatchQueue.main.async { self?.refresh(animated: true) }
+        }.store(in: &subscriptions)
         Publishers.CombineLatest(model.$sessions, model.$pendingOnly)
             .sink { [weak self] _, _ in
                 DispatchQueue.main.async { self?.refresh(animated: true) }
@@ -174,13 +177,13 @@ final class IslandPanel {
                                   availableHeight: top - screen.visibleFrame.minY - 12,
                                   sessionCount: model.visibleSessions.count)
         if layoutState.layout != layout { layoutState.layout = layout }
-        let frame = layout.frame(expanded: model.expanded, centerX: screen.frame.midX,
+        let frame = layout.frame(expanded: model.expanded, alerting: model.islandNotice != nil, centerX: screen.frame.midX,
                                  top: top, scale: screen.backingScaleFactor)
         guard targetFrame != frame else { return }
         targetFrame = frame
         if animated && panel.isVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = model.expanded ? 0.30 : 0.20
+                context.duration = model.expanded || model.islandNotice != nil ? 0.30 : 0.20
                 context.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 0.8, 0.24, 1)
                 panel.animator().setFrame(frame, display: true)
             } completionHandler: { [weak self] in

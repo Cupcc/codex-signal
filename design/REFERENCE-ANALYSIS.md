@@ -58,3 +58,13 @@ CodeIsland 的 README、事件策略源码和提问测试说明了审批、提�
 本项目设计建议：提醒优先级、6 秒展示、3 秒聚合、60 秒后一次提醒、状态文案、三种 UI 信息结构。这些属于待验证的产品选择。
 
 正式稿使用 HTML/CSS 与原创代码绘制的圆润玩偶 SVG，没有使用 AI 生图，也没有把第三方截图嵌入界面。早期准备的 CodeIsland Dex 静态 SVG 作为可选经典皮肤素材保留，其 MIT 许可与署名位于 assets/。默认圆润皮肤与经典皮肤的来源分别见 [素材说明](assets/ATTRIBUTION.md)。
+
+## 原生提醒实现补充（2026-11-10）
+
+本轮读取以下公开源码，作为交互机制参考；未移植第三方实现或角色资产：
+
+- [CodeIsland AttentionPolicy](https://github.com/wxtsky/CodeIsland/blob/main/Sources/CodeIslandCore/AttentionPolicy.swift)：统一判断一个事件是否值得提醒，声音和卡片分别交付；区分真实整轮失败与工具失败，并抑制子任务的普通结束通知。Signal 使用同一批已接受事件分发声音和视觉提示，不让语音开关影响小岛。
+- [Coucou IslandStateMachine](https://github.com/Louis-CFM/coucou/blob/main/NotchBuddy/Sources/App/IslandStateMachine.swift)：短暂状态与主动展开分开管理，自动收回与手动收回保持状态一致。Signal 增加短提示尺寸，保留用户主动展开的列表及阅读位置。
+- [Notchi NotchiState](https://github.com/sk-ruban/notchi/blob/main/notchi/notchi/Models/NotchiState.swift)：工作、等待、休眠采用独立任务姿态与节奏。Signal 保留已有五态形象，修复会话排序被错误当作角色状态优先级的问题。
+
+本轮产品选择与动效参数见 [折叠状态与灵动岛提示](MOTION.md)。6 秒停留和 300/200ms 展收是 Signal 的设计选择，不声称是参考项目的参数。

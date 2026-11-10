@@ -245,6 +245,27 @@ public struct SessionStore: Codable, Sendable {
         return changed
     }
 
+    /// Repair missed terminal hooks from exact-turn runtime evidence, silently.
+    @discardableResult
+    public mutating func reconcile(_ resolution: CodexTurnResolution) -> Bool {
+        guard resolution.observedAt.isFinite, resolution.observedAt >= 0 else { return false }
+        let id = resolution.source.rawValue + ":" + resolution.sessionID
+        guard var record = records[id], record.session.turnId == resolution.turnID,
+              !record.session.phase.terminal, record.latestOccurredAt <= resolution.observedAt,
+              (record.latestMetadataAt ?? record.latestOccurredAt) <= resolution.observedAt else { return false }
+        switch resolution.outcome {
+        case .completed: record.session.phase = .completed
+        case .interrupted: record.session.phase = .stopped
+        case .failed: record.session.phase = .failed
+        }
+        if let request = record.session.requestId { record.resolvedRequests.insert(request) }
+        record.session.requestId = nil
+        // Observation time is not event time: an already queued new-turn hook
+        // must still be accepted even if it predates this poll.
+        records[id] = record
+        return true
+    }
+
     public mutating func markSeen(_ id: String) {
         records[id]?.session.seen = true
     }

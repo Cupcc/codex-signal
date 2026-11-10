@@ -195,7 +195,8 @@ struct SessionNavigatorTests {
             guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) != nil else { continue }
             let lookup = try #require(SessionNavigator.terminalLookupScript(bundleID: bundle, titles: ["引号 \" 与 \\ | App"], liveTTYs: ["ttys002"]))
             let focus = try #require(SessionNavigator.terminalScript(bundleID: bundle, tty: "/dev/ttys002"))
-            for script in [lookup, focus] {
+            let recovery = try #require(SessionRecovery.script(bundleID: bundle, command: "codex resume '\(threadID)'"))
+            for script in [lookup, focus, recovery] {
                 let source = root.appendingPathComponent("script.applescript")
                 try script.write(to: source, atomically: true, encoding: .utf8)
                 let process = Process()
@@ -226,6 +227,43 @@ struct SessionNavigatorTests {
         #expect(SessionNavigator.resumeCommand(for: value) == "cd -- '/tmp/a'\"'\"'b $HOME `echo nope`' && codex resume '\(threadID)'")
         value.cwd = "/tmp/line\nbreak"
         #expect(SessionNavigator.resumeCommand(for: value) == "codex resume '\(threadID)'")
+    }
+
+    @Test func recoveryUsesPreferredThenSourceThenAvailableTerminal() {
+        var value = session(.cli)
+        value.terminalBundleID = TerminalPreference.ghostty.rawValue
+        let installed = Set(SessionNavigator.scriptableTerminals)
+        #expect(SessionRecovery.terminal(for: value, preferred: .iTerm2, installed: installed,
+                                        running: [], frontmost: nil) == TerminalPreference.iTerm2.rawValue)
+        #expect(SessionRecovery.terminal(for: value, preferred: .automatic, installed: installed,
+                                        running: [], frontmost: nil) == TerminalPreference.ghostty.rawValue)
+        value.terminalBundleID = "unsupported"
+        #expect(SessionRecovery.terminal(for: value, preferred: .iTerm2, installed: [TerminalPreference.terminal.rawValue],
+                                        running: [], frontmost: nil) == TerminalPreference.terminal.rawValue)
+        value.terminalBundleID = nil
+        #expect(SessionRecovery.terminal(for: value, preferred: .automatic, installed: installed,
+                                        running: [TerminalPreference.ghostty.rawValue], frontmost: nil) == TerminalPreference.ghostty.rawValue)
+        #expect(SessionRecovery.terminal(for: value, preferred: .automatic, installed: [],
+                                        running: [], frontmost: nil) == nil)
+    }
+
+    @Test func recoveryRejectsInputThatCouldExecuteBeforeReturn() throws {
+        for bundle in SessionNavigator.scriptableTerminals {
+            for command in ["", "codex resume '\(threadID)'\n", "echo bad\r", "echo bad\u{1b}", "echo bad\t"] {
+                #expect(SessionRecovery.script(bundleID: bundle, command: command) == nil)
+            }
+            var value = session(.cli)
+            value.cwd = "/tmp/路径 '\" \\n $HOME `echo nope`"
+            let command = try #require(SessionNavigator.resumeCommand(for: value))
+            let script = try #require(SessionRecovery.script(bundleID: bundle, command: command))
+            #expect(script.contains(SessionNavigator.appleScriptString(command)))
+            #expect(!script.contains("do script"))
+            #expect(!script.contains("send key \"enter\""))
+            #expect(!script.contains("key code 36"))
+            #expect(!script.contains("keystroke return"))
+            if bundle == TerminalPreference.iTerm2.rawValue { #expect(script.contains("newline NO")) }
+        }
+        #expect(SessionRecovery.script(bundleID: "unsupported", command: "echo hello") == nil)
     }
 
     @Test func testTTYScriptRejectsUntrustedValuesAndUnsupportedApplications() {

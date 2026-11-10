@@ -66,6 +66,22 @@ struct IslandLayoutTests {
         #expect(expanded.minX * 2 == (expanded.minX * 2).rounded())
     }
 
+    @Test func transientNoticeStaysBelowCameraAndKeepsTopEdgeFixed() {
+        for inset: CGFloat in [0, 32] {
+            let geometry = IslandScreenGeometry(screenWidth: 1512, safeAreaTop: inset,
+                                                auxiliaryLeftWidth: 660, auxiliaryRightWidth: 660, menuBarHeight: 24)
+            let layout = IslandLayout(geometry: geometry, availableWidth: 1488, availableHeight: 900, sessionCount: 10)
+            let compact = layout.frame(expanded: false, centerX: 756, top: 900, scale: 2)
+            let notice = layout.frame(expanded: false, alerting: true, centerX: 756, top: 900, scale: 2)
+            #expect(notice.maxY == compact.maxY)
+            #expect(notice.midX == compact.midX)
+            #expect(notice.height == compact.height + 78)
+            #expect(notice.width >= compact.width)
+            #expect(notice.height < layout.expandedSize.height)
+            #expect(layout.size(expanded: true, alerting: true) == layout.expandedSize)
+        }
+    }
+
     @Test func malformedScreenHintsFallBackToFiniteGeometry() {
         let geometry = IslandScreenGeometry(screenWidth: 1440, safeAreaTop: 32,
                                             auxiliaryLeftWidth: .nan, auxiliaryRightWidth: 1000,

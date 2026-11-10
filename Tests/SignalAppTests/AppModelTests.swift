@@ -186,6 +186,16 @@ struct AppModelTests {
         #expect(!unknownTerminal.speechEnabled)
     }
 
+    @Test func recoveryFeedbackKeepsTheReturnInstruction() throws {
+        let model = try model()
+        let session = try #require(model.sessions.first)
+        model.showNavigationResult(.init(message: "已填入恢复命令，按回车继续", didNavigate: true),
+                                   for: session.id, anchor: .primary)
+        #expect(model.actionFeedback?.message == "已填入恢复命令，按回车继续")
+        #expect(model.actionFeedback?.isFailure == false)
+        #expect(model.statusNotice == nil)
+    }
+
     @Test func preferredTerminalPersistsAcrossOtherSettingChangesAndRestart() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("signal-terminal-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }

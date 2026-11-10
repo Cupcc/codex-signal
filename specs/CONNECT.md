@@ -73,6 +73,8 @@ python3 scripts/signal_bridge.py --input notify --source cli --data-dir /tmp/cod
 
 `UserPromptSubmit` 映射 started，`Stop` 映射 completed，`Interrupt` 映射 stopped。completed 表示本轮结束，不表示测试成功。`SessionEnd` 只有带有效 turn_id 才能写 disconnected，默认不注册该事件，因为官方样例不提供 turn_id。
 
+共享服务会话另有每 5 秒一次的只读状态核对，用于补回漏收的结束事件。当前仅核对本地来源元数据为 `source=vscode`、`originator=codex-tui` 的会话；通过已有服务的 `thread/turns/list` 获取状态，`itemsView=notLoaded` 不加载对话内容。按原会话和轮次匹配后，completed、interrupted、failed 分别修正为本轮结束、已停止、运行失败；修正不播报，也不重新打开已关闭的提醒。服务不可用、接口不兼容或找不到匹配轮次时保留原状态。独立 CLI 仍依赖 Hooks，不根据静默时长推断任务结束。排查依据见 [运行状态修复记录](RUNTIME-STATUS-FIX.md)。
+
 `PermissionRequest` 映射 approval。若有 tool_use_id，requestId 为其稳定派生值。实际 CLI 的审批输入没有该标识，桥用已记录的 PreToolUse 关联唯一活动调用。Bash 仅按 command 摘要匹配，忽略审批特有的 description。记录不完整或候选不唯一时保持无 ID 降级，使用工具名和输入内容的 SHA-256 摘要。输入正文不进入事件文件或关联数据库。同一回合、相同工具输入的重复请求可能合并。这个降级方式无法证明两个相同请求是同一个实际请求。
 
 `PreToolUse` 仅在工具名恰为 request_user_input 时映射 question。客户端可能绕过默认工具 Hooks，因此这不是完整提问覆盖承诺。

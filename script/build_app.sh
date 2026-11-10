@@ -61,7 +61,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>
 <key>NSPrincipalClass</key><string>NSApplication</string>
-<key>NSAppleEventsUsageDescription</key><string>用于按终端会话标识定位对应窗口和标签页。</string>
+<key>NSAppleEventsUsageDescription</key><string>用于定位终端标签页，或新建标签页并填入恢复命令，等待你按回车执行。</string>
 </dict></plist>
 PLIST
 plutil -lint "$APP/Contents/Info.plist"

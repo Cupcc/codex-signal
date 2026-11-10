@@ -4,6 +4,7 @@ import SignalCore
 
 struct SignalSettings: Codable {
     var speechEnabled = true
+    var islandAlertsEnabled = true
     var quietHoursEnabled = false
     var quietStart = 22
     var quietEnd = 8
@@ -17,6 +18,7 @@ extension SignalSettings {
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         speechEnabled = try values.decodeIfPresent(Bool.self, forKey: .speechEnabled) ?? true
+        islandAlertsEnabled = try values.decodeIfPresent(Bool.self, forKey: .islandAlertsEnabled) ?? true
         quietHoursEnabled = try values.decodeIfPresent(Bool.self, forKey: .quietHoursEnabled) ?? false
         quietStart = try values.decodeIfPresent(Int.self, forKey: .quietStart) ?? 22
         quietEnd = try values.decodeIfPresent(Int.self, forKey: .quietEnd) ?? 8
@@ -49,6 +51,8 @@ final class AppModel: ObservableObject {
     @Published var pendingOnly = false
     @Published var expanded = false
     @Published var speechEnabled = true
+    @Published var islandAlertsEnabled = true
+    @Published private(set) var islandNotice: IslandNotice?
     @Published var quietHoursEnabled = false
     @Published var quietStart = 22
     @Published var quietEnd = 8
@@ -71,29 +75,37 @@ final class AppModel: ObservableObject {
     private var metadataTask: Task<Void, Never>?
     private var metadataReadKey: String?
     private var lastMetadataCheck = Date.distantPast
+    private var runtimeTask: Task<Void, Never>?
+    private var lastRuntimeCheck = Date.distantPast
     private enum Issue { case startup, settings, invalidData, eventSave, cleanup, acknowledgement, demo, retention }
     private var currentIssue: Issue?
     private var feedbackTask: Task<Void, Never>?
     private let feedbackDuration: Duration
+    private let islandNoticeDuration: Duration
+    private var islandNoticeTask: Task<Void, Never>?
     private var lastRetentionCheck = Date.distantPast
 
     var activeSessions: [SignalSession] { sessions.filter(\.isVisible) }
     var visibleSessions: [SignalSession] {
         activeSessions.filter { !pendingOnly || $0.pending }
     }
+    var runningCount: Int { activeSessions.filter { $0.phase == .running }.count }
+    var aggregatePhase: SessionPhase { IslandNotice.aggregatePhase(sessions) }
     var pendingCount: Int { activeSessions.filter(\.pending).count }
     var unreadCount: Int { sessions.filter(\.unread).count }
 
-    init(dataDirectory: URL, demo: Bool, feedbackDuration: Duration = .seconds(2)) {
+    init(dataDirectory: URL, demo: Bool, feedbackDuration: Duration = .seconds(2), islandNoticeDuration: Duration = .seconds(6)) {
         self.dataDirectory = dataDirectory
         self.isDemo = demo
         self.feedbackDuration = feedbackDuration
+        self.islandNoticeDuration = islandNoticeDuration
         do {
             try prepareDirectory(dataDirectory)
             try prepareDirectory(inbox)
             let settingsURL = dataDirectory.appendingPathComponent("settings.json")
             if let data = try? Data(contentsOf: settingsURL), let settings = try? JSONDecoder().decode(SignalSettings.self, from: data) {
                 speechEnabled = settings.speechEnabled
+                islandAlertsEnabled = settings.islandAlertsEnabled
                 quietHoursEnabled = settings.quietHoursEnabled
                 quietStart = min(23, max(0, settings.quietStart))
                 quietEnd = min(23, max(0, settings.quietEnd))
@@ -126,23 +138,31 @@ final class AppModel: ObservableObject {
         Publishers.CombineLatest4($speechEnabled, $quietHoursEnabled, $quietStart, $quietEnd)
             .dropFirst().sink { [weak self] enabled, quiet, start, end in
                 guard let self else { return }
-                let settings = SignalSettings(speechEnabled: enabled, quietHoursEnabled: quiet, quietStart: start, quietEnd: end,
+                let settings = SignalSettings(speechEnabled: enabled, islandAlertsEnabled: self.islandAlertsEnabled, quietHoursEnabled: quiet, quietStart: start, quietEnd: end,
                                               retentionDays: self.retentionDays, preferredTerminal: self.preferredTerminal)
                 self.saveSettings(settings)
                 self.speech.cancel()
             }.store(in: &subscriptions)
         $retentionDays.dropFirst().sink { [weak self] days in
             guard let self else { return }
-            let settings = SignalSettings(speechEnabled: self.speechEnabled, quietHoursEnabled: self.quietHoursEnabled,
+            let settings = SignalSettings(speechEnabled: self.speechEnabled, islandAlertsEnabled: self.islandAlertsEnabled, quietHoursEnabled: self.quietHoursEnabled,
                                           quietStart: self.quietStart, quietEnd: self.quietEnd, retentionDays: days,
                                           preferredTerminal: self.preferredTerminal)
             if self.saveSettings(settings) { self.expireReminders(retentionDays: days) }
         }.store(in: &subscriptions)
         $preferredTerminal.dropFirst().sink { [weak self] terminal in
             guard let self else { return }
-            self.saveSettings(SignalSettings(speechEnabled: self.speechEnabled, quietHoursEnabled: self.quietHoursEnabled,
+            self.saveSettings(SignalSettings(speechEnabled: self.speechEnabled, islandAlertsEnabled: self.islandAlertsEnabled, quietHoursEnabled: self.quietHoursEnabled,
                                              quietStart: self.quietStart, quietEnd: self.quietEnd,
                                              retentionDays: self.retentionDays, preferredTerminal: terminal))
+        }.store(in: &subscriptions)
+        $islandAlertsEnabled.dropFirst().sink { [weak self] enabled in
+            guard let self else { return }
+            self.saveSettings(SignalSettings(speechEnabled: self.speechEnabled, islandAlertsEnabled: enabled,
+                                             quietHoursEnabled: self.quietHoursEnabled, quietStart: self.quietStart,
+                                             quietEnd: self.quietEnd, retentionDays: self.retentionDays,
+                                             preferredTerminal: self.preferredTerminal))
+            if !enabled { self.dismissIslandNotice() }
         }.store(in: &subscriptions)
         $pendingOnly.dropFirst().sink { [weak self] value in
             guard let self else { return }
@@ -154,12 +174,14 @@ final class AppModel: ObservableObject {
             Task { @MainActor in
                 self?.drainInbox(silent: false)
                 self?.refreshTitlesIfNeeded()
+                self?.refreshRuntimeIfNeeded()
                 if let self, Date().timeIntervalSince(self.lastRetentionCheck) >= 60 {
                     self.expireReminders()
                 }
             }
         }
         refreshTitlesIfNeeded()
+        refreshRuntimeIfNeeded()
         writeSnapshot()
     }
 
@@ -240,7 +262,7 @@ final class AppModel: ObservableObject {
         writeSnapshot()
     }
 
-    private func drainInbox(silent: Bool) {
+    func drainInbox(silent: Bool) {
         guard let files = try? FileManager.default.contentsOfDirectory(at: inbox, includingPropertiesForKeys: [.fileSizeKey, .isSymbolicLinkKey]) else { return }
         let candidates = files.filter { $0.pathExtension == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         var decoded: [(URL, SignalEvent)] = []
@@ -313,8 +335,10 @@ final class AppModel: ObservableObject {
                 selectedID = store.sessions.first(where: { $0.sessionId == selectedSessionID })?.id
             }
             synchronize()
-            for event in announcements where event.occurredAt > now - Double(retentionDays) * 86_400 {
-                speech.enqueue(event)
+            let recent = announcements.filter { $0.occurredAt > now - Double(retentionDays) * 86_400 }
+            for event in recent { speech.enqueue(event) }
+            if islandAlertsEnabled && !expanded && !speech.sceneQuiet {
+                presentIslandNotice(IslandNotice.receiving(recent, sessions: sessions, current: islandNotice))
             }
         }
         if let cleanupError {
@@ -326,12 +350,16 @@ final class AppModel: ObservableObject {
 
     private func synchronize() {
         sessions = store.sortedSessions()
+        if let notice = islandNotice {
+            presentIslandNotice(notice.reconciled(with: sessions))
+        }
         if !visibleSessions.contains(where: { $0.id == selectedID }) { selectedID = visibleSessions.last?.id }
     }
 
     func setExpanded(_ value: Bool) {
         let opening = value && !expanded
         expanded = value
+        if value { dismissIslandNotice() }
         if opening || !visibleSessions.contains(where: { $0.id == selectedID }) { selectedID = visibleSessions.last?.id }
         writeSnapshot()
     }
@@ -401,13 +429,12 @@ final class AppModel: ObservableObject {
     }
 
     func showNavigationResult(_ result: SessionNavigationResult, for sessionID: String, anchor: ActionFeedback.Anchor) {
-        showFeedback(result.isFailure ? result.message : (result.didNavigate ? "已打开" : "已复制"),
-                     for: sessionID, anchor: anchor, isFailure: result.isFailure)
+        showFeedback(result.message, for: sessionID, anchor: anchor, isFailure: result.isFailure)
     }
 
     func copyResumeCommand(_ session: SignalSession, feedbackAnchor: ActionFeedback.Anchor = .copyResume) {
         guard let command = SessionNavigator.resumeCommand(for: session) else {
-            copySessionID(session, feedbackAnchor: feedbackAnchor)
+            showFeedback("无法生成恢复命令", for: session.id, anchor: feedbackAnchor, isFailure: true)
             return
         }
         NSPasteboard.general.clearContents()
@@ -433,7 +460,42 @@ final class AppModel: ObservableObject {
         select(rows[min(rows.count - 1, max(0, current + offset))].id)
     }
 
-    func previewVoice() { speech.preview() }
+    func previewIslandNotice() {
+        setExpanded(false)
+        presentIslandNotice(.preview)
+        if speech.allowed() { speech.preview() }
+    }
+
+    func openIslandNotice() {
+        let target = islandNotice?.primary.id
+        pendingOnly = false
+        setExpanded(true)
+        if let target { select(target) }
+    }
+
+    func dismissIslandNotice() {
+        islandNoticeTask?.cancel()
+        islandNoticeTask = nil
+        islandNotice = nil
+        writeSnapshot()
+    }
+
+    private func presentIslandNotice(_ notice: IslandNotice?) {
+        let previousID = islandNotice?.id
+        islandNotice = notice
+        guard notice?.id != previousID else { return }
+        islandNoticeTask?.cancel()
+        islandNoticeTask = nil
+        if let notice {
+            let duration = islandNoticeDuration
+            islandNoticeTask = Task { [weak self] in
+                do { try await Task.sleep(for: duration) } catch { return }
+                guard let self, !Task.isCancelled, self.islandNotice?.id == notice.id else { return }
+                self.dismissIslandNotice()
+            }
+        }
+        writeSnapshot()
+    }
 
     private func seedDemo() {
         let now = Date().timeIntervalSince1970
@@ -449,6 +511,32 @@ final class AppModel: ObservableObject {
         }
         do { try save() } catch { showIssue("演示状态保存失败", kind: .demo, details: error.localizedDescription) }
         synchronize()
+    }
+
+    private func refreshRuntimeIfNeeded() {
+        guard !isDemo, runtimeTask == nil, Date().timeIntervalSince(lastRuntimeCheck) >= 5 else { return }
+        lastRuntimeCheck = Date()
+        let tracked = sessions.filter { !$0.phase.terminal }
+        guard !tracked.isEmpty else { return }
+        runtimeTask = Task { [weak self] in
+            let resolutions = await Task.detached(priority: .utility) { CodexRuntimeStatus.read(sessions: tracked) }.value
+            guard let self, !Task.isCancelled else { return }
+            defer { self.runtimeTask = nil }
+            let previous = self.store
+            var changedIDs = Set<String>()
+            for resolution in resolutions {
+                if self.store.reconcile(resolution) {
+                    changedIDs.insert(resolution.source.rawValue + ":" + resolution.sessionID)
+                }
+            }
+            guard !changedIDs.isEmpty else { return }
+            do {
+                try self.save()
+                for id in changedIDs { self.speech.cancel(sessionID: id) }
+                self.synchronize()
+                self.writeSnapshot()
+            } catch { self.store = previous }
+        }
     }
 
     private func refreshTitlesIfNeeded() {
@@ -503,6 +591,10 @@ final class AppModel: ObservableObject {
         let snapshot: [String: Any] = [
             "processID": ProcessInfo.processInfo.processIdentifier, "sessions": rows, "visibleIDs": visibleSessions.map(\.id), "selectedID": selectedID as Any? ?? NSNull(),
             "pendingCount": pendingCount, "unreadCount": unreadCount, "expanded": expanded,
+            "runningCount": runningCount, "aggregatePhase": aggregatePhase.rawValue,
+            "islandNoticeID": islandNotice?.id.uuidString as Any? ?? NSNull(),
+            "islandNoticePhase": islandNotice?.primary.phase.rawValue as Any? ?? NSNull(),
+            "islandNoticeCount": islandNotice?.sessions.count ?? 0,
             "speechCount": speechCount, "lastSpeech": lastSpeech as Any? ?? NSNull(),
             "isDemo": isDemo, "status": statusMessage, "isNavigating": isNavigating,
             "lastIntake": lastIntake?.timeIntervalSince1970 as Any? ?? NSNull()

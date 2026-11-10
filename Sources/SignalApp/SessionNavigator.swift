@@ -25,7 +25,7 @@ struct SessionNavigationResult {
 /// Prefer stable terminal identifiers. Shared-service sessions additionally
 /// support a unique complete title match among live Codex TTYs; never match a project alone.
 /// Deep-link routing and exact Terminal/iTerm TTY selection were compared with
-/// CodeIsland's TerminalActivator; no commands are executed in the user's shell.
+/// CodeIsland's TerminalActivator. Recovery fills a new tab without executing the command.
 enum SessionNavigator {
     static let codexBundleID = "com.openai.codex"
     static let ghosttyBundleID = "com.mitchellh.ghostty"
@@ -75,12 +75,19 @@ enum SessionNavigator {
 
     @MainActor
     static func open(_ session: SignalSession, peers: [SignalSession] = [], preferredTerminal: TerminalPreference = .automatic) async -> SessionNavigationResult {
+        let result = await openOriginal(session, peers: peers, preferredTerminal: preferredTerminal)
+        guard result.isFailure else { return result }
+        return await SessionRecovery.open(session, preferredTerminal: preferredTerminal, reason: result.message)
+    }
+
+    @MainActor
+    private static func openOriginal(_ session: SignalSession, peers: [SignalSession], preferredTerminal: TerminalPreference) async -> SessionNavigationResult {
         switch plan(for: session).target {
         case .codexThread(let link):
             // The running copy may differ from Launch Services' default installation.
             let running = NSRunningApplication.runningApplications(withBundleIdentifier: codexBundleID).first
             guard let appURL = running?.bundleURL ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: codexBundleID) else {
-                return fallback(session, reason: "未找到 Codex")
+                return .init(message: "未找到 Codex", didNavigate: false, isFailure: true)
             }
             if running?.isHidden == true { running?.unhide() }
             let configuration = NSWorkspace.OpenConfiguration()
@@ -92,13 +99,13 @@ enum SessionNavigator {
             }
             // URL delivery is observable; actual thread rendering belongs to the destination app.
             return accepted ? .init(message: "已打开", didNavigate: true)
-                : fallback(session, reason: "无法打开 Codex 会话")
+                : .init(message: "无法打开 Codex 会话", didNavigate: false, isFailure: true)
         case .terminal(let bundleID, let tty):
             guard !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty else {
-                return fallback(session, reason: "终端已关闭")
+                return .init(message: "终端已关闭", didNavigate: false, isFailure: true)
             }
             guard let script = terminalScript(bundleID: bundleID, tty: tty) else {
-                return fallback(session, reason: "无法打开，请重试")
+                return navigationResult(.failed)
             }
             return navigationResult(await runScript(script))
         case .terminalSession:
@@ -134,20 +141,6 @@ enum SessionNavigator {
             copy(id)
             return .init(message: "已复制会话标识", didNavigate: false)
         }
-    }
-
-    @MainActor
-    private static func fallback(_ session: SignalSession, reason: String) -> SessionNavigationResult {
-        if session.source == .cli {
-            // Navigation failure must not silently replace the user's clipboard.
-            return .init(message: reason, didNavigate: false, isFailure: true)
-        }
-        if let command = resumeCommand(for: session) {
-            copy(command)
-            return .init(message: "\(reason)；已复制恢复命令，可在终端继续此会话", didNavigate: false, isFailure: true)
-        }
-        copy(session.sessionId)
-        return .init(message: "\(reason)；已复制会话标识", didNavigate: false, isFailure: true)
     }
 
     /// Codex's default OSC title is activity + thread-name + project-name.
@@ -403,7 +396,7 @@ enum SessionNavigator {
         }
     }
 
-    private static func runScript(_ script: String) async -> ScriptResult {
+    static func runScript(_ script: String) async -> ScriptResult {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
@@ -425,7 +418,7 @@ enum SessionNavigator {
                 let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 let error = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                if error.contains("-1743") { continuation.resume(returning: .denied) }
+                if error.contains("-1743") || error.contains("-1719") || error.contains("(1002)") { continuation.resume(returning: .denied) }
                 else if error.contains("-1712") { continuation.resume(returning: .timedOut) }
                 else if process.terminationStatus != 0 { continuation.resume(returning: .failed) }
                 else {
