@@ -234,17 +234,57 @@ struct AppModelTests {
         let session = try #require(model.sessions.first)
         let before = model.sessions
         let selected = model.selectedID
-        model.showNavigationResult(SessionNavigator.navigationResult(.notFound), for: session.id, anchor: .primary)
+        model.showNavigationResult(SessionNavigator.navigationResult(.notFound), for: session, anchor: .primary)
         #expect(model.statusNotice == nil)
         #expect(model.actionFeedback?.message == "未找到标签页，可能已关闭")
         #expect(model.actionFeedback?.anchor == .primary)
         #expect(model.actionFeedback?.isFailure == true)
         #expect(model.sessions == before && model.selectedID == selected)
-        model.showNavigationResult(SessionNavigator.navigationResult(.matched), for: session.id, anchor: .row)
+        model.showNavigationResult(SessionNavigator.navigationResult(.matched), for: session, anchor: .row)
         #expect(model.actionFeedback?.message == "已打开")
         #expect(model.actionFeedback?.isFailure == false)
         #expect(model.actionFeedback?.anchor == .row)
         #expect(model.statusNotice == nil)
+    }
+
+    @Test(arguments: [SessionPhase.approval, .completed])
+    func successfulNavigationDismissesOnlyOpenedReminderAndPersists(phase: SessionPhase) throws {
+        let model = try model()
+        defer { try? FileManager.default.removeItem(at: model.dataDirectory) }
+        let session = try #require(model.visibleSessions.first { $0.phase == phase })
+        let others = model.sessions.filter { $0.id != session.id }
+
+        model.showNavigationResult(.init(message: "已打开", didNavigate: true), for: session, anchor: .primary)
+
+        #expect(!model.visibleSessions.contains { $0.id == session.id })
+        #expect(model.sessions.first { $0.id == session.id }?.isDismissed == true)
+        #expect(model.sessions.filter { $0.id != session.id } == others)
+        let restored = AppModel(dataDirectory: model.dataDirectory, demo: true)
+        #expect(restored.sessions == model.sessions)
+
+        let event = SignalEvent(eventId: UUID().uuidString, source: session.source, sessionId: session.sessionId,
+                                turnId: "next-turn", project: session.project, kind: .started,
+                                occurredAt: Date().timeIntervalSince1970)
+        try JSONEncoder().encode(event).write(to: model.dataDirectory.appendingPathComponent("inbox/next-turn.json"))
+        model.drainInbox(silent: true)
+        #expect(model.visibleSessions.contains { $0.id == session.id && $0.turnId == "next-turn" })
+    }
+
+    @Test func navigationDoesNotDismissNewerMessageForSameSession() throws {
+        let model = try model()
+        defer { try? FileManager.default.removeItem(at: model.dataDirectory) }
+        let previous = try #require(model.visibleSessions.first { $0.phase == .approval })
+        let event = SignalEvent(eventId: UUID().uuidString, source: previous.source, sessionId: previous.sessionId,
+                                turnId: previous.turnId, requestId: "new-request", project: previous.project,
+                                kind: .approval, occurredAt: Date().timeIntervalSince1970)
+        try JSONEncoder().encode(event).write(to: model.dataDirectory.appendingPathComponent("inbox/new-request.json"))
+        model.drainInbox(silent: true)
+        let current = try #require(model.visibleSessions.first { $0.id == previous.id })
+        #expect(current.requestId == "new-request")
+
+        model.showNavigationResult(.init(message: "已打开", didNavigate: true), for: previous, anchor: .primary)
+
+        #expect(model.visibleSessions.contains(current))
     }
 
     @Test func oldSettingsKeepVoicePreferencesAndDefaultToThirtyDays() throws {
@@ -268,7 +308,7 @@ struct AppModelTests {
         let model = try model()
         let session = try #require(model.sessions.first)
         model.showNavigationResult(.init(message: "已填入恢复命令，按回车继续", didNavigate: true),
-                                   for: session.id, anchor: .primary)
+                                   for: session, anchor: .primary)
         #expect(model.actionFeedback?.message == "已填入恢复命令，按回车继续")
         #expect(model.actionFeedback?.isFailure == false)
         #expect(model.statusNotice == nil)

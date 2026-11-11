@@ -11,10 +11,32 @@
 
 ## 本地构建和验证
 
+发布前默认执行最小回归测试。先检查本次发布相对上一发布标签的差异，再选择改动及直接受影响行为的测试。只改文档或版本号时，跳过功能测试；版本号变更仍检查最终包的版本信息。
+
+Swift 可按套件或用例筛选，筛选模式只运行匹配的 Swift 测试，不运行 Python 测试。没有匹配用例时脚本失败。示例：
+
 ```sh
-./script/test.sh
+./script/test.sh --filter 'AppModelTests|SessionNavigatorTests'
+./script/test.sh --filter 'AppModelTests/openingAndFilteringSelectNewestAtBottom'
+```
+
+按实际影响范围选择以下测试；同一行中的套件也可继续缩小到相关用例：
+
+| 改动范围 | 回归入口 |
+| --- | --- |
+| 会话状态、请求、持久化或来源 | 对应的 `SessionStoreTests`、`PendingRequestTests`、`RuntimeStatusTests`、`SessionMetadataTests`、`SessionSourceTests`；跨到提醒时加相关 `AppModelTests` 或 `MessageIntakeTests` 用例 |
+| 列表、筛选、导航或提醒 | 对应的 `AppModelTests`、`SessionNavigatorTests`、`IslandNoticeTests`、`MessageIntakeTests` 用例 |
+| 窗口、浮层或布局 | `IslandPanelTests`、`IslandLayoutTests` 的相关用例；过程检查见 [排查手册](playbooks/README.md) |
+| 伙伴素材、动画或语音 | 对应的 `MascotAnimationTests`、`VoicePolicyTests` 用例 |
+| Hooks 配置、桥接或请求关联 | `python3 scripts/test_configure_hooks.py`、`python3 scripts/test_bridge.py`、`python3 scripts/test_correlation.py` 中受影响的测试文件；接入生命周期变更加相关 `CodexConnectionTests` 用例 |
+| 自动更新 | 相关 `UpdateTests` 用例；安装器变更运行 `python3 scripts/test_update_installer.py` |
+
+仅在用户明确要求，或跨模块改动无法确定影响范围时运行全量 `./script/test.sh`，并说明原因。记录本次选择的测试、结果和未验证项。
+
+回归通过后构建最终发布包。`release.sh` 只构建和打包，不自动运行测试：
+
+```sh
 ./script/release.sh
-python3 scripts/verify_runtime.py --check-speech
 lipo -archs dist/CodexSignal.app/Contents/MacOS/CodexSignal
 codesign --verify --deep --strict dist/CodexSignal.app
 ```
@@ -23,7 +45,11 @@ codesign --verify --deep --strict dist/CodexSignal.app
 
 另需将 ZIP 解压到临时目录验证其签名和启动，并挂载 DMG 检查应用和“应用程序”快捷方式。对外发布的文件必须来自最终提交中的源码。
 
-检查 Finder 中的蓝色伙伴图标。打开设置，确认版本及构建号；打开“关于”，确认图标、简介、版权和项目链接可见。第三方许可链接打开包内的 `Contents/Resources/ThirdParty` 目录。
+启动最终包，确认设置中的版本及构建号。图标、资源或“关于”变更时，再检查对应图标、信息与第三方许可入口。事件接收、提醒、语音或启动恢复变更时，运行隔离的打包运行回归：
+
+```sh
+python3 scripts/verify_runtime.py --check-speech
+```
 
 ## 上传 GitHub Release
 

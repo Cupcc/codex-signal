@@ -86,7 +86,8 @@ git clone https://github.com/Cupcc/codex-signal.git
 cd codex-signal
 ./script/build_and_run.sh          # 编译并重启
 ./script/build_and_run.sh --demo   # 演示模式
-./script/test.sh                  # Swift 和 Python 测试
+./script/test.sh --filter 'AppModelTests' # 按改动选择 Swift 回归测试
+./script/test.sh                         # 全量 Swift 和 Python 测试，按需运行
 ```
 
 产物位于 `dist/CodexSignal.app`。还支持 `--build`（只构建）、`--verify`（启动检查）、`--debug`、`--logs` 和 `--telemetry`。Codex 项目的 Run 按钮调用同一个构建运行脚本。安装 [just](https://just.systems/) 后，也可使用 `just dev`、`just test`、`just release` 等快捷命令。
@@ -105,7 +106,7 @@ python3 scripts/verify_runtime.py --check-speech
 
 ## 构建发布包
 
-版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.6.0（Build 7）**，“关于 Codex Signal”中可查看。
+版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.6.1（Build 8）**，“关于 Codex Signal”中可查看。
 
 ```sh
 ./script/release.sh
@@ -122,7 +123,7 @@ dist/releases/
 └── SHA256SUMS.txt
 ```
 
-发布操作和验证要求见 [发布指南](docs/RELEASING.md)。
+发布前默认按改动执行最小回归测试，并验证最终发布包。测试选择与发布操作见 [发布指南](docs/RELEASING.md)。
 
 ## 项目结构
 

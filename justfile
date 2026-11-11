@@ -24,7 +24,7 @@ build:
 release:
     ./script/release.sh
 
-# 运行测试
+# 运行全量测试；最小回归使用 script/test.sh --filter REGEX
 test:
     ./script/test.sh
 

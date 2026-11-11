@@ -463,7 +463,7 @@ final class AppModel: ObservableObject {
     func openSource(_ session: SignalSession, feedbackAnchor: ActionFeedback.Anchor = .primary) {
         guard !isNavigating else { return }
         guard !isDemo else {
-            showNavigationResult(.init(message: "演示会话无法打开", didNavigate: false, isFailure: true), for: session.id, anchor: feedbackAnchor)
+            showNavigationResult(.init(message: "演示会话无法打开", didNavigate: false, isFailure: true), for: session, anchor: feedbackAnchor)
             writeSnapshot()
             return
         }
@@ -472,13 +472,18 @@ final class AppModel: ObservableObject {
             let result = await SessionNavigator.open(session, peers: self?.sessions ?? [], preferredTerminal: self?.preferredTerminal ?? .automatic)
             guard let self else { return }
             self.isNavigating = false
-            self.showNavigationResult(result, for: session.id, anchor: feedbackAnchor)
+            self.showNavigationResult(result, for: session, anchor: feedbackAnchor)
             self.writeSnapshot()
         }
     }
 
-    func showNavigationResult(_ result: SessionNavigationResult, for sessionID: String, anchor: ActionFeedback.Anchor) {
-        showFeedback(result.message, for: sessionID, anchor: anchor, isFailure: result.isFailure)
+    func showNavigationResult(_ result: SessionNavigationResult, for session: SignalSession, anchor: ActionFeedback.Anchor) {
+        if result.didNavigate, let current = IslandNotice.successor(of: session, in: sessions),
+           current.turnId == session.turnId, current.phase == session.phase,
+           current.requestId == session.requestId, current.updatedAt == session.updatedAt {
+            dismissReminder(current.id)
+        }
+        showFeedback(result.message, for: session.id, anchor: anchor, isFailure: result.isFailure)
     }
 
     func copyResumeCommand(_ session: SignalSession, feedbackAnchor: ActionFeedback.Anchor = .copyResume) {
