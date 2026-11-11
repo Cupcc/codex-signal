@@ -88,7 +88,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(withTitle: "GitHub 手动下载…", action: #selector(downloadManually), keyEquivalent: "")
             menu.addItem(.separator())
             menu.addItem(withTitle: "关于 Codex Signal", action: #selector(about), keyEquivalent: "")
-            menu.addItem(withTitle: "退出 Codex Signal", action: #selector(quit), keyEquivalent: "q")
             for item in menu.items { item.target = self }
             statusItem.menu = menu
             statusItem.button?.performClick(nil)
@@ -121,5 +120,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func about() {
         AppProduct.showAbout()
     }
-    @objc private func quit() { NSApp.terminate(nil) }
 }

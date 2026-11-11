@@ -57,6 +57,15 @@ struct SessionStoreTests {
         #expect(!store.sessions[0].unread)
     }
 
+    @Test func answeringPendingRequestMovesSessionToWorking() {
+        var store = SessionStore()
+        store.apply(event(.question, request: "question-1"))
+        #expect(store.sessions[0].phase == .question)
+        #expect({ store.apply(event(.resumed, request: "question-1", time: 101)) }())
+        #expect(store.sessions[0].phase == .running)
+        #expect(!store.sessions[0].pending)
+    }
+
     @Test func dismissingReminderPreservesRequestAndSurvivesReplayAndRestart() throws {
         var store = SessionStore()
         let request = event(.approval, request: "request-1")

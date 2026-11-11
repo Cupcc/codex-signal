@@ -63,6 +63,7 @@ final class AppModel: ObservableObject {
     @Published var quietEnd = 8
     @Published var retentionDays = 30
     @Published var preferredTerminal: TerminalPreference = .automatic
+    @Published private(set) var launchAtLoginEnabled = false
     @Published private(set) var statusNotice: StatusNotice?
     @Published private(set) var actionFeedback: ActionFeedback?
     var statusMessage: String { statusNotice?.message ?? "" }
@@ -71,6 +72,7 @@ final class AppModel: ObservableObject {
     let dataDirectory: URL
     let updater: UpdateController
     let connection: CodexConnection
+    let launchAtLogin: LaunchAtLoginController
     private var store = SessionStore()
     private var timer: Timer?
     private var subscriptions = Set<AnyCancellable>()
@@ -107,6 +109,8 @@ final class AppModel: ObservableObject {
         self.dataDirectory = dataDirectory
         self.updater = UpdateController(dataDirectory: dataDirectory)
         self.connection = CodexConnection(dataDirectory: dataDirectory, codexHome: codexHome)
+        self.launchAtLogin = LaunchAtLoginController()
+        self.launchAtLoginEnabled = launchAtLogin.isEnabled
         self.isDemo = demo
         self.feedbackDuration = feedbackDuration
         self.islandNoticeDuration = islandNoticeDuration
@@ -207,6 +211,18 @@ final class AppModel: ObservableObject {
         refreshTitlesIfNeeded()
         refreshRuntimeIfNeeded()
         writeSnapshot()
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            try launchAtLogin.setEnabled(enabled)
+            launchAtLoginEnabled = launchAtLogin.isEnabled
+            resolveIssue(.settings)
+        } catch {
+            launchAtLogin.refresh()
+            launchAtLoginEnabled = launchAtLogin.isEnabled
+            showIssue(enabled ? "开机启动设置失败" : "关闭开机启动失败", kind: .settings, details: error.localizedDescription)
+        }
     }
 
     private func showIssue(_ message: String, kind: Issue, details: String? = nil, directory: URL? = nil) {
@@ -480,7 +496,8 @@ final class AppModel: ObservableObject {
     func showNavigationResult(_ result: SessionNavigationResult, for session: SignalSession, anchor: ActionFeedback.Anchor) {
         if result.didNavigate, let current = IslandNotice.successor(of: session, in: sessions),
            current.turnId == session.turnId, current.phase == session.phase,
-           current.requestId == session.requestId, current.updatedAt == session.updatedAt {
+           current.requestId == session.requestId, current.updatedAt == session.updatedAt,
+           !current.phase.pending {
             dismissReminder(current.id)
         }
         showFeedback(result.message, for: session.id, anchor: anchor, isFailure: result.isFailure)

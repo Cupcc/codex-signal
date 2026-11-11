@@ -247,11 +247,10 @@ struct AppModelTests {
         #expect(model.statusNotice == nil)
     }
 
-    @Test(arguments: [SessionPhase.approval, .completed])
-    func successfulNavigationDismissesOnlyOpenedReminderAndPersists(phase: SessionPhase) throws {
+    @Test func successfulNavigationDismissesOnlyOpenedCompletedReminderAndPersists() throws {
         let model = try model()
         defer { try? FileManager.default.removeItem(at: model.dataDirectory) }
-        let session = try #require(model.visibleSessions.first { $0.phase == phase })
+        let session = try #require(model.visibleSessions.first { $0.phase == .completed })
         let others = model.sessions.filter { $0.id != session.id }
 
         model.showNavigationResult(.init(message: "已打开", didNavigate: true), for: session, anchor: .primary)
@@ -268,6 +267,28 @@ struct AppModelTests {
         try JSONEncoder().encode(event).write(to: model.dataDirectory.appendingPathComponent("inbox/next-turn.json"))
         model.drainInbox(silent: true)
         #expect(model.visibleSessions.contains { $0.id == session.id && $0.turnId == "next-turn" })
+    }
+
+    @Test func successfulNavigationKeepsPendingReminderUntilRequestResolves() throws {
+        let model = try model()
+        defer { try? FileManager.default.removeItem(at: model.dataDirectory) }
+        let session = try #require(model.visibleSessions.first { $0.phase == .approval })
+        let before = try #require(model.sessions.first { $0.id == session.id })
+
+        model.showNavigationResult(.init(message: "已打开", didNavigate: true), for: session, anchor: .primary)
+
+        let afterOpen = try #require(model.sessions.first { $0.id == session.id })
+        #expect(afterOpen == before)
+        #expect(afterOpen.pending)
+        #expect(afterOpen.isVisible)
+
+        let event = SignalEvent(eventId: UUID().uuidString, source: session.source, sessionId: session.sessionId,
+                                turnId: session.turnId, requestId: session.requestId, project: session.project,
+                                kind: .resumed, occurredAt: Date().timeIntervalSince1970)
+        try JSONEncoder().encode(event).write(to: model.dataDirectory.appendingPathComponent("inbox/resolved.json"))
+        model.drainInbox(silent: true)
+        #expect(model.sessions.first { $0.id == session.id }?.phase == .running)
+        #expect(model.sessions.first { $0.id == session.id }?.isVisible == true)
     }
 
     @Test func navigationDoesNotDismissNewerMessageForSameSession() throws {

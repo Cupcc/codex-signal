@@ -413,12 +413,6 @@ struct IslandView: View {
                 Text("\(model.runningCount) 运行中")
                 Text("·  \(model.readyCount) 待查看")
                 Spacer(minLength: 0)
-                Button("退出") { NSApp.terminate(nil) }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .keyboardShortcut("q", modifiers: .command)
-                    .help("退出 Codex Signal（⌘Q）")
-                    .accessibilityLabel("退出 Codex Signal")
             }
             .font(.system(size: 11))
             .monospacedDigit()
@@ -643,6 +637,19 @@ struct IslandView: View {
                 }
                 .labelsHidden()
                 .frame(width: 120)
+            }
+            Divider()
+            HStack(spacing: 4) {
+                Toggle("开机启动", isOn: Binding(
+                    get: { model.launchAtLoginEnabled },
+                    set: { model.setLaunchAtLogin($0) }
+                ))
+                .fixedSize()
+                if model.launchAtLogin.needsApproval {
+                    Text("需要在系统设置中允许")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             Divider()
             HStack {
