@@ -7,6 +7,27 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct IslandPanelTests {
+    enum CollapseTrigger: CaseIterable {
+        case appDeactivated, collapseButton, menuBarToggle, noticePreview, nativeDismissalThenCollapse
+
+        @MainActor func perform(model: AppModel, island: IslandPanel, settings: NSPopover) {
+            switch self {
+            case .appDeactivated:
+                NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
+                NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
+            case .collapseButton:
+                model.setExpanded(false)
+            case .menuBarToggle:
+                island.toggle()
+            case .noticePreview:
+                model.previewIslandNotice()
+            case .nativeDismissalThenCollapse:
+                settings.close()
+                model.setExpanded(false)
+            }
+        }
+    }
+
     private func withPanel(_ body: (AppModel, IslandPanel, NSWindow) async throws -> Void) async throws {
         _ = NSApplication.shared
         let existing = Set(NSApp.windows.map(ObjectIdentifier.init))
@@ -32,24 +53,40 @@ struct IslandPanelTests {
         #expect(abs(actual.height - expected.height) <= 0.5)
     }
 
-    @Test(arguments: [20, 80, 400], [20, 80, 400])
-    func losingFocusClosesSettingsBeforeCollapsing(expansionDelay: Int, settingsDelay: Int) async throws {
+    private func openSettings(model: AppModel, window: NSWindow,
+                              expansionDelay: Int, settingsDelay: Int) async throws -> NSPopover {
+        var shownPopover: NSPopover?
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSPopover.willShowNotification, object: nil, queue: .main
+        ) { notification in
+            MainActor.assumeIsolated { shownPopover = notification.object as? NSPopover }
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        model.setExpanded(true)
+        try await Task.sleep(for: .milliseconds(expansionDelay))
+        window.makeKey()
+        model.updateSettingsRequested = true
+        try await Task.sleep(for: .milliseconds(settingsDelay))
+        for _ in 0..<50 {
+            if shownPopover?.contentViewController?.view.window?.parent === window { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let popover = try #require(shownPopover)
+        try #require(popover.contentViewController?.view.window?.parent === window)
+        try #require(model.expanded)
+        return popover
+    }
+
+    @Test(arguments: CollapseTrigger.allCases,
+          [20, 80, 400].flatMap { expansion in [20, 80, 400].map { (expansion, $0) } })
+    func collapseClosesSettingsWithoutWaiting(trigger: CollapseTrigger, delays: (Int, Int)) async throws {
         try await withPanel { model, island, window in
             island.show()
             try await Task.sleep(for: .milliseconds(100))
             let compact = window.frame
-            model.setExpanded(true)
-            try await Task.sleep(for: .milliseconds(expansionDelay))
-            window.makeKey()
-            model.updateSettingsRequested = true
-            try await Task.sleep(for: .milliseconds(settingsDelay))
-            for _ in 0..<50 {
-                if window.childWindows?.contains(where: { $0.isVisible }) == true { break }
-                try await Task.sleep(for: .milliseconds(10))
-            }
-            let visibleChild = window.childWindows?.first(where: { $0.isVisible })
-            let settingsWindow = try #require(visibleChild)
-            try #require(model.expanded)
+            let settings = try await openSettings(model: model, window: window,
+                                                  expansionDelay: delays.0, settingsDelay: delays.1)
+            let settingsWindow = try #require(settings.contentViewController?.view.window)
 
             var collapsedBeforeSettingsClosed = false
             let expansion = model.$expanded.dropFirst().sink { expanded in
@@ -64,15 +101,59 @@ struct IslandPanelTests {
                 }
             }
             defer { observers.forEach(NotificationCenter.default.removeObserver) }
-            NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
-            NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
+            trigger.perform(model: model, island: island, settings: settings)
+            #expect(!model.expanded, "Collapse must start in the same event, without waiting for a second animation")
+            #expect(settingsWindow.parent == nil, "Detach settings before changing the panel's presentation")
             try await Task.sleep(for: .milliseconds(1000))
             #expect(!collapsedBeforeSettingsClosed)
             #expect(!model.expanded)
             #expect(!frames.isEmpty)
-            #expect(frames.allSatisfy { abs($0.maxY - compact.maxY) <= 0.5 })
-            #expect(frames.allSatisfy { abs($0.midX - compact.midX) <= 0.5 })
-            expectFrame(window.frame, matches: compact)
+            #expect(frames.allSatisfy { abs($0.maxY - compact.maxY) <= 0.5 },
+                    "Top offsets: \(frames.map { $0.maxY - compact.maxY })")
+            // AppKit rounds intermediate origins and widths to whole points.
+            // Interrupting that animation can accumulate a one-point center offset.
+            #expect(frames.allSatisfy { abs($0.midX - compact.midX) <= 1 },
+                    "Center offsets: \(frames.map { $0.midX - compact.midX })")
+            if trigger == .noticePreview {
+                #expect(model.islandNotice != nil)
+            } else {
+                expectFrame(window.frame, matches: compact)
+            }
+        }
+    }
+
+    @Test func collapseClosesNestedHelpAndSettingsBeforePublishing() async throws {
+        try await withPanel { model, island, window in
+            island.show()
+            try await Task.sleep(for: .milliseconds(100))
+            let settings = try await openSettings(model: model, window: window, expansionDelay: 80, settingsDelay: 80)
+            let settingsView = try #require(settings.contentViewController?.view)
+            let settingsWindow = try #require(settingsView.window)
+            let help = NSPopover()
+            let content = NSViewController()
+            content.view = NSView(frame: NSRect(x: 0, y: 0, width: 160, height: 80))
+            help.contentViewController = content
+            help.show(relativeTo: settingsView.bounds, of: settingsView, preferredEdge: .maxX)
+            defer { help.close() }
+            let helpWindow = try #require(content.view.window)
+            try #require(helpWindow.parent === settingsWindow)
+            var collapsedWithAttachedPopover = false
+            let expansion = model.$expanded.dropFirst().sink { expanded in
+                if !expanded, settingsWindow.parent != nil || helpWindow.parent != nil {
+                    collapsedWithAttachedPopover = true
+                }
+            }
+            defer { expansion.cancel() }
+
+            model.setExpanded(false)
+            #expect(!model.expanded)
+            #expect(!collapsedWithAttachedPopover)
+            #expect(settingsWindow.parent == nil)
+            #expect(helpWindow.parent == nil)
+            try await Task.sleep(for: .milliseconds(400))
+
+            let reopened = try await openSettings(model: model, window: window, expansionDelay: 80, settingsDelay: 80)
+            #expect(reopened.isShown)
         }
     }
 

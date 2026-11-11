@@ -18,3 +18,5 @@ python3 scripts/test_bridge.py
 python3 scripts/test_correlation.py
 
 python3 scripts/test_update_installer.py
+
+python3 scripts/test_configure_hooks.py

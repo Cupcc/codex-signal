@@ -336,8 +336,11 @@ def normalize(raw, mode, source, now=None):
         direct = {"UserPromptSubmit": "started", "PermissionRequest": "approval", "Stop": "completed", "Interrupt": "stopped", "SessionEnd": "disconnected"}
         if name in direct:
             kind = direct[name]
-        elif name == "PreToolUse" and raw.get("tool_name") == "request_user_input":
+        elif name == "PreToolUse" and raw.get("tool_name") in {"request_user_input", "request_user_input_async"}:
             kind = "question"
+        elif name == "PostToolUse" and raw.get("tool_name") == "request_user_input_async":
+            # This tool returns after posting the question, before the user answers.
+            return None
         elif name == "PostToolUse" and raw.get("tool_use_id"):
             kind = "resumed"
         else:
@@ -461,9 +464,6 @@ def main():
             except (OSError, ValueError, subprocess.SubprocessError):
                 process_source = None
             source = resolve_source(process_source, raw)
-            # Keep in-flight Pre/Permission/Post records in their original transport partition.
-            # A metadata retry or this upgrade must not split an existing request correlation.
-            correlation_source = process_source or "unknown"
         enriched = enrich_hook(raw, correlation_source, args.data_dir.expanduser()) if args.input == "hook" and isinstance(raw, dict) else raw
         event = normalize(enriched, args.input, source)
         if event is not None:

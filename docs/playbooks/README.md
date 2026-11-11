@@ -4,6 +4,7 @@
 
 已记录的案例：
 
+- [2026-11-11：统一折叠入口，取消设置退场等待](2026-11-11-popover-collapse.md)
 - [2026-11-10：设置失焦后，灵动岛折叠跳位](2026-11-10-popover-collapse.md)
 
 ## 排查窗口跳位、失焦和浮层关闭问题
@@ -38,7 +39,7 @@ pgrep -fl CodexSignal
 
 ### 3. 对齐实际事件顺序
 
-从 [IslandPanel.swift](../../Sources/SignalApp/IslandPanel.swift) 的 `collapse()` 和事件订阅开始，追踪到 [IslandView.swift](../../Sources/SignalApp/IslandView.swift) 的设置浮层。区分以下入口：
+从 [AppModel.swift](../../Sources/SignalApp/AppModel.swift) 的 `setExpanded(_:)`、[IslandPanel.swift](../../Sources/SignalApp/IslandPanel.swift) 的 `willCollapse` 订阅开始，追踪到 [IslandView.swift](../../Sources/SignalApp/IslandView.swift) 的设置浮层。区分以下入口：
 
 - 窗口失去键盘焦点：`NSWindow.didResignKeyNotification`。
 - 应用失活：`NSApplication.didResignActiveNotification`。
@@ -63,9 +64,11 @@ pgrep -fl CodexSignal
 
 如果父窗口开始缩小时，浮层仍依附于父窗口，先让浮层完成关闭，再改变父窗口尺寸。
 
-等待负责该浮层的原生组件发出完成通知。对于本案例，使用对应 `NSPopover` 的 `didCloseNotification`。不要把 SwiftUI 绑定变为 `false`、`onDisappear`、原生关闭开始和原生关闭完成当作同一个时刻。
+检查负责该浮层的原生组件是否已完成关闭。不要把 SwiftUI 绑定变为 `false`、`onDisappear`、原生关闭开始和原生关闭完成当作同一个时刻。2026-11-10 的实现等待 `didCloseNotification`，但这会串行播放两段动画，且只保护 `IslandPanel.collapse()` 的调用者。
 
-重复到达的失焦事件只保留一次待折叠请求。关闭通知必须匹配当前浮层，避免其他浮层的通知触发折叠。
+当前实现提前设置属于面板的 `NSPopover.animates = false`，并在 `setExpanded(false)` 发布状态前同步关闭浮层。检查关闭返回后浮层窗口的 `parent` 已为 `nil`，再检查面板状态和动画。覆盖系统先开始关闭浮层的情况，以及设置内的嵌套帮助。若某个平台仍异步关闭，必须按真实关闭完成事件协调，不能假定动画配置必然被系统遵守。
+
+所有折叠入口必须经过同一个状态边界。`expanded` 的 setter 不对外开放。浮层的关闭通知只清理对应实例，不能触发另一次折叠或消费其他浮层的状态。
 
 只有证据确认坐标计算或动画本身有错时，才修改那一层。不要先增加固定延时、循环拉回顶部或自定义逐帧动画。已有的位置修复只能证明最终位置可恢复，不能证明中途没有跳动。
 
@@ -76,10 +79,11 @@ pgrep -fl CodexSignal
 本案例的回归入口位于 [IslandPanelTests.swift](../../Tests/SignalAppTests/IslandPanelTests.swift)：
 
 ```text
-IslandPanelTests.losingFocusClosesSettingsBeforeCollapsing
+IslandPanelTests.collapseClosesSettingsWithoutWaiting
+IslandPanelTests.collapseClosesNestedHelpAndSettingsBeforePublishing
 ```
 
-检查的关键约束是：主面板切换为收起状态时，设置窗口已解除与主面板的父子关系。最终 frame 正确只是其中一项检查。
+检查的关键约束是：同一次事件中开始收起，而且发布收起状态前设置窗口及嵌套帮助已解除父子关系。最终 frame 正确只是其中一项检查。
 
 使用项目测试脚本运行验证：
 

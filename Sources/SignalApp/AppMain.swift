@@ -46,7 +46,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
             return
         }
-        model = AppModel(dataDirectory: directory, demo: demo)
+        let codexHome: URL
+        if let index = args.firstIndex(of: "--codex-home"), args.indices.contains(index + 1) {
+            codexHome = URL(fileURLWithPath: args[index + 1], isDirectory: true)
+        } else {
+            codexHome = CodexConnection.defaultCodexHome
+        }
+        model = AppModel(dataDirectory: directory, demo: demo, codexHome: codexHome)
         panel = IslandPanel(model: model)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.title = "◈ Signal"
@@ -61,7 +67,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }.store(in: &subscriptions)
         panel.show()
-        if !demo { model.updater.start() }
+        if !demo {
+            model.updater.start()
+            // Replay runs must opt in with an isolated Codex home before writing hooks.
+            if !args.contains("--data-dir") || args.contains("--codex-home") { model.connection.configureAfterInstallation() }
+            if model.sessions.isEmpty { model.setExpanded(true) }
+        }
         if demo || args.contains("--expanded") { model.setExpanded(true) }
     }
 

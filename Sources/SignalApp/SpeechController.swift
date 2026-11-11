@@ -18,8 +18,16 @@ enum VoiceClip: String, CaseIterable {
     }
 
     var url: URL? {
-        Bundle.module.url(forResource: rawValue, withExtension: "mp3", subdirectory: "Resources/Audio")
+        Self.resources.url(forResource: rawValue, withExtension: "mp3", subdirectory: "Resources/Audio")
     }
+
+    private static let resources: Bundle = {
+        if let directory = Bundle.main.resourceURL,
+           let bundle = Bundle(url: directory.appendingPathComponent("CodexSignal_SignalApp.bundle")) {
+            return bundle
+        }
+        return .module
+    }()
 }
 
 struct VoicePolicy {
@@ -44,18 +52,25 @@ struct VoicePolicy {
 final class SpeechController: NSObject, AVAudioPlayerDelegate {
     private struct Playback {
         let clip: VoiceClip
-        let sessionID: String?
+        var sessionID: String?
     }
 
     private var player: AVAudioPlayer?
     private var queue: [Playback] = []
     private var speakingSessionID: String?
-    private let volume: Float
+    private(set) var lastPlaybackURL: URL?
+    private(set) var lastPlaybackVolume: Float?
+    var volume: Float {
+        didSet {
+            player?.volume = volume
+            if let player { lastPlaybackVolume = player.volume }
+        }
+    }
     var allowed: () -> Bool = { false }
     var didSpeak: (String) -> Void = { _ in }
     var sceneQuiet = false { didSet { if sceneQuiet { cancel() } } }
 
-    init(volume: Float = 0.75) {
+    init(volume: Float = 1.0) {
         self.volume = volume
         super.init()
         let center = DistributedNotificationCenter.default()
@@ -82,9 +97,20 @@ final class SpeechController: NSObject, AVAudioPlayerDelegate {
 
     func enqueue(_ event: SignalEvent) {
         let sessionID = event.source.rawValue + ":" + event.sessionId
-        queue.removeAll { $0.sessionID == sessionID }
+        discardQueued(sessionID: sessionID)
         guard allowed(), !sceneQuiet, let clip = VoicePolicy.clip(for: event) else { return }
         speak(clip, sessionID: sessionID)
+    }
+
+    func discardQueued(sessionID: String) {
+        queue.removeAll { $0.sessionID == sessionID }
+    }
+
+    func rekeySession(from previous: String, to current: String) {
+        for index in queue.indices where queue[index].sessionID == previous {
+            queue[index].sessionID = current
+        }
+        if speakingSessionID == previous { speakingSessionID = current }
     }
 
     func preview() {
@@ -99,12 +125,13 @@ final class SpeechController: NSObject, AVAudioPlayerDelegate {
 
     private func playNext() {
         guard player == nil else { return }
-        guard allowed(), !sceneQuiet else {
+        guard !sceneQuiet else {
             queue.removeAll()
             return
         }
         while !queue.isEmpty {
             let next = queue.removeFirst()
+            guard next.sessionID == nil || allowed() else { continue }
             do {
                 guard let url = next.clip.url else {
                     NSLog("Missing voice clip: %@.mp3", next.clip.rawValue)
@@ -118,6 +145,8 @@ final class SpeechController: NSObject, AVAudioPlayerDelegate {
                     continue
                 }
                 player = audio
+                lastPlaybackURL = audio.url
+                lastPlaybackVolume = audio.volume
                 speakingSessionID = next.sessionID
                 didSpeak(next.clip.phrase)
                 return

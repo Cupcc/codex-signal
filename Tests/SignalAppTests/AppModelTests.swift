@@ -252,6 +252,7 @@ struct AppModelTests {
         let settings = try JSONDecoder().decode(SignalSettings.self, from: data)
         #expect(settings.retentionDays == 30)
         #expect(!settings.speechEnabled)
+        #expect(settings.speechVolume == 100)
         #expect(settings.quietHoursEnabled)
         #expect(settings.quietStart == 23)
         #expect(settings.quietEnd == 9)
@@ -278,6 +279,8 @@ struct AppModelTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = AppModel(dataDirectory: directory, demo: true)
         #expect(model.preferredTerminal == .automatic)
+        #expect(model.speechVolume == 100)
+        model.speechVolume = 37
         model.preferredTerminal = .ghostty
         model.speechEnabled = false
         model.quietHoursEnabled = true
@@ -285,13 +288,45 @@ struct AppModelTests {
         model.retentionDays = 15
         let restored = AppModel(dataDirectory: directory, demo: true)
         #expect(restored.preferredTerminal == .ghostty)
+        #expect(restored.speechVolume == 37)
         #expect(!restored.speechEnabled && restored.quietHoursEnabled)
         #expect(restored.quietStart == 23 && restored.retentionDays == 15)
         restored.preferredTerminal = .iTerm2
         let settings = try JSONDecoder().decode(SignalSettings.self, from: Data(contentsOf: directory.appendingPathComponent("settings.json")))
         #expect(settings.preferredTerminal == .iTerm2)
+        #expect(settings.speechVolume == 37)
         #expect(!settings.speechEnabled && settings.quietHoursEnabled)
         #expect(settings.quietStart == 23 && settings.retentionDays == 15)
+    }
+
+    @Test(arguments: [(-10.0, 0.0), (0.0, 0.0), (37.0, 37.0), (100.0, 100.0), (140.0, 100.0)])
+    func speechVolumeIsClampedWhenLoadingSettings(value: Double, expected: Double) throws {
+        let data = try JSONSerialization.data(withJSONObject: ["speechVolume": value])
+        let settings = try JSONDecoder().decode(SignalSettings.self, from: data)
+        #expect(settings.speechVolume == expected)
+    }
+
+    @Test func speechPreviewBypassesReminderMuteWithoutOpeningAnIslandNotice() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("signal-preview-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = AppModel(dataDirectory: directory, demo: true)
+        model.speechVolume = 0
+        model.speechEnabled = false
+        model.quietHoursEnabled = true
+        model.quietStart = 0
+        model.quietEnd = 0
+        model.setExpanded(true)
+
+        model.previewSpeech()
+
+        #expect(model.expanded)
+        #expect(model.islandNotice == nil)
+        let data = try Data(contentsOf: directory.appendingPathComponent("runtime-status.json"))
+        let snapshot = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(snapshot["speechCount"] as? Int == 1)
+        #expect(snapshot["speechVolume"] as? Double == 0)
+        #expect(snapshot["speechPlayerVolume"] as? Double == 0)
+        #expect(snapshot["speechAudioPath"] as? String == VoiceClip.approval.url?.path)
     }
 
     @Test func retentionRunsOnStartupAndSettingChangeAndPersists() throws {

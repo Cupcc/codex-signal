@@ -35,7 +35,7 @@
 
 官方 Hooks 的 stdin JSON 与 notify 的 argv JSON 分开解析。已核实本机 CLI 0.167.0 与 hooks feature。可靠映射包括 UserPromptSubmit、PermissionRequest、Stop、Interrupt。SessionStart 不等于开始任务。
 
-整轮失败标准事件可回放，但没有已验证的官方 Hook 来源。request_user_input 的实际 Hooks 覆盖未证实，不能凭 PermissionRequest 推断提问。标准事件支持 question，自动适配只在明确观察到工具对应事件时映射。PermissionRequest 缺失稳定请求标识时使用可解释的降级键，并记录去重限制。
+整轮失败标准事件可回放，但没有已验证的官方 Hook 来源。`request_user_input` 和 `request_user_input_async` 的 PreToolUse 映射 question，不能凭 PermissionRequest 推断提问。同步提问的 PostToolUse 可解除匹配请求，异步提问的立即返回不解除等待。客户端可能绕过默认工具 Hooks，不能承诺完整提问覆盖。PermissionRequest 缺失稳定请求标识时使用可解释的降级键，并记录去重限制。
 
 桌面版 Hook 支持受实际版本和信任状态影响。本轮不读取私有数据库，不启动第二个 app-server 来冒充订阅现有桌面会话。
 

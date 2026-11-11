@@ -65,7 +65,8 @@ struct IslandView: View {
             .reportExpandedContentHeight()
             if model.visibleSessions.isEmpty {
                 emptyState
-                    .preference(key: ExpandedContentHeightKey.self, value: IslandLayout.emptyStateHeight)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .reportExpandedContentHeight()
             } else {
                 ScrollViewReader { scroll in
                     ScrollView {
@@ -441,19 +442,20 @@ struct IslandView: View {
 
     private var emptyState: some View {
         VStack(spacing: 10) {
-            Spacer()
             MascotView(phase: nil, size: 48, motionActive: model.expanded)
             Text(model.sessions.isEmpty ? "暂无会话" : model.sessionFilter.emptyTitle)
                 .font(.system(size: 13, weight: .medium))
             if model.sessions.isEmpty {
-                ConnectionHelpButton(dataDirectory: model.dataDirectory)
+                ConnectionSettingsView(connection: model.connection, isDemo: model.isDemo)
+                    .padding(.horizontal, 18)
             } else if model.sessionFilter != .all {
                 Button("查看全部") { withAnimation(motion) { model.sessionFilter = .all } }
                     .buttonStyle(.bordered)
             }
-            Spacer()
         }
+        .padding(.vertical, 20)
         .frame(maxWidth: .infinity)
+        .frame(minHeight: IslandLayout.emptyStateHeight)
     }
 
     private var collapsedContent: some View {
@@ -567,8 +569,9 @@ struct IslandView: View {
                 Text("设置").font(.headline)
                 Spacer()
                 Button("预览提醒") { model.previewIslandNotice() }
-                ConnectionHelpButton(dataDirectory: model.dataDirectory)
             }
+            ConnectionSettingsView(connection: model.connection, isDemo: model.isDemo)
+            Divider()
             HStack {
                 Text("首选终端")
                 Spacer()
@@ -594,6 +597,19 @@ struct IslandView: View {
                         .fixedSize()
                     HelpButton(title: "灵动岛提示说明", message: "新提醒短暂展开，6 秒后收起。待处理标记会保留；关闭提示不影响状态动画。")
                 }
+            }
+            HStack(spacing: 8) {
+                Text("提示音音量")
+                Slider(value: $model.speechVolume, in: 0...100, step: 1) {
+                    Text("提示音音量")
+                }
+                .labelsHidden()
+                .accessibilityValue("\(Int(model.speechVolume))%")
+                Text("\(Int(model.speechVolume))%")
+                    .monospacedDigit()
+                    .frame(width: 38, alignment: .trailing)
+                Button("试听") { model.previewSpeech() }
+                    .accessibilityLabel("试听提示音")
             }
             HStack(spacing: 4) {
                 Toggle("勿扰时段", isOn: $model.quietHoursEnabled)
@@ -742,37 +758,6 @@ private struct StatusDetailsButton: View {
             .frame(width: 340, alignment: .leading)
         }
         .onChange(of: notice) { _, _ in visible = false }
-    }
-}
-
-private struct ConnectionHelpButton: View {
-    let dataDirectory: URL
-    @State private var visible = false
-
-    private var command: String {
-        "python3 scripts/signal_bridge.py --print-hooks --source auto --data-dir \(SessionNavigator.shellQuote(dataDirectory.path))"
-    }
-
-    var body: some View {
-        Button("接入说明") { visible.toggle() }
-            .buttonStyle(.bordered)
-            .popover(isPresented: $visible) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("接入 Codex").font(.headline)
-                    Text("1. 在 Codex Signal 项目目录运行：")
-                    Text(command)
-                        .font(.system(size: 11, design: .monospaced))
-                        .textSelection(.enabled)
-                        .padding(10)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
-                    Text("2. 在 Codex 的 Hooks 设置中审阅并合并生成的配置，保留已有条目。")
-                    Text("3. 开启新会话。")
-                }
-                .font(.system(size: 12))
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(20)
-                .frame(width: 360, alignment: .leading)
-            }
     }
 }
 

@@ -43,6 +43,8 @@ struct VoicePolicyTests {
         for clip in VoiceClip.allCases {
             let url = try #require(clip.url)
             let file = try AVAudioFile(forReading: url)
+            // AVAudioPlayer attenuates mono-to-stereo playback by 3 dB.
+            #expect(file.processingFormat.channelCount == 2)
             #expect(file.length > 0)
             let buffer = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat,
                                                       frameCapacity: AVAudioFrameCount(file.length)))
@@ -64,6 +66,16 @@ struct VoicePolicyTests {
         speech.enqueue(event(.approval))
 
         #expect(phrases == [VoiceClip.approval.phrase])
+    }
+
+    @Test @MainActor func testFullVolumePreviewUsesTheClipWithoutAttenuation() {
+        let speech = SpeechController()
+        speech.didSpeak = { [weak speech] _ in speech?.cancel() }
+
+        speech.preview()
+
+        #expect(speech.lastPlaybackURL == VoiceClip.approval.url)
+        #expect(speech.lastPlaybackVolume == 1)
     }
 
     @Test @MainActor func testCloselySpacedEventsPlayIndividually() async throws {
@@ -142,9 +154,19 @@ struct VoicePolicyTests {
         let duration = try AVAudioPlayer(contentsOf: #require(VoiceClip.approval.url)).duration
         try await Task.sleep(for: .seconds(duration + 0.5))
         #expect(count == 1)
+    }
+
+    @Test @MainActor func testExplicitPreviewBypassesReminderMute() {
+        let speech = SpeechController(volume: 0)
         speech.allowed = { false }
+        var phrases: [String] = []
+        speech.didSpeak = { phrases.append($0) }
+        defer { speech.cancel() }
+
+        speech.enqueue(event(.approval))
+        #expect(phrases.isEmpty)
         speech.preview()
-        #expect(count == 1)
+        #expect(phrases == [VoiceClip.approval.phrase])
     }
 
     private func event(_ kind: EventKind, session: String = "a", child: Bool = false) -> SignalEvent {

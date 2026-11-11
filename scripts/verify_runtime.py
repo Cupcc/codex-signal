@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -85,6 +86,78 @@ class RuntimeCheck:
     def passed(self, name, evidence):
         self.results.append({"name": name, "status": "VERIFIED", "evidence": evidence})
         print("PASS " + name, flush=True)
+
+    def verify_async_question(self):
+        self.stop()
+        self.settings()
+        self.launch()
+        self.send(self.event("resumed", turn="turn-2", request="question-two"))
+        bridge = self.app / "Contents/Resources/Bridge/signal_bridge.py"
+
+        def hook(name, turn="async-turn", **fields):
+            payload = dict(hook_event_name=name, session_id="runtime-async", turn_id=turn,
+                           cwd="/tmp/signal-question-verification", **fields)
+            result = subprocess.run([sys.executable, str(bridge), "--input", "hook", "--source", "cli",
+                                     "--data-dir", str(self.directory)], input=json.dumps(payload),
+                                    text=True, capture_output=True, timeout=10)
+            assert result.returncode == 0 and not result.stdout and not result.stderr, result.stderr
+            self.wait(lambda _: not list((self.directory / "inbox").glob("*.json")), "hook inbox did not drain")
+
+        hook("UserPromptSubmit")
+        self.expect_phase("running", "runtime-async")
+        tool = dict(tool_name="request_user_input_async", tool_use_id="async-call",
+                    tool_input={"questions": [{"title": "Choose a test option", "options": ["A", "B"]}]})
+        hook("PreToolUse", **tool)
+        value = self.expect_phase("question", "runtime-async")
+        assert value["aggregatePhase"] == "question" and value["pendingCount"] == 1
+        assert value["mascotState"] == "question" and value["islandNoticePhase"] == "question"
+        hook("PostToolUse", **tool)
+        hook("PostToolUse", tool_name="Bash", tool_use_id="unrelated-call")
+        self.expect_phase("question", "runtime-async")
+        hook("PermissionRequest", tool_name="Bash", tool_use_id="overlapping-approval")
+        self.expect_phase("approval", "runtime-async")
+        self.stop()
+        self.launch()
+        self.expect_phase("approval", "runtime-async")
+        hook("PostToolUse", tool_name="Bash", tool_use_id="overlapping-approval")
+        value = self.expect_phase("question", "runtime-async")
+        assert self.row(value, "runtime-async")["pending"] is True
+        assert value["speechCount"] == 0 and value["islandNoticeID"] is None
+        hook("UserPromptSubmit", turn="answer-turn")
+        self.expect_phase("running", "runtime-async")
+        hook("PreToolUse", turn="answer-turn", **dict(tool, tool_use_id="next-question"))
+        self.expect_phase("question", "runtime-async")
+        hook("Stop", turn="answer-turn")
+        self.expect_phase("completed", "runtime-async")
+        self.passed("async question stays pending after tool return", "packaged bridge and app show question, pending count and island alert; immediate return and unrelated tools preserve it; restart retains it silently; a new turn or Stop clears it")
+        self.passed("overlapping approval preserves unanswered question", "a pending question survives a later approval, process restart, and that approval's matching completion")
+
+    def verify_request_order_and_source(self):
+        self.send(self.event("started", session="runtime-order"))
+        self.send(self.event("resumed", session="runtime-order", request="early-result"))
+        self.stop()
+        self.launch()
+        self.send(self.event("approval", session="runtime-order", request="early-result"))
+        self.expect_phase("running", "runtime-order")
+        self.send(self.event("question", session="runtime-order", request="still-open"))
+        self.expect_phase("question", "runtime-order")
+        self.send(self.event("approval", session="runtime-order", request="early-result"))
+        self.expect_phase("question", "runtime-order")
+        self.send(self.event("resumed", session="runtime-order", request="still-open"))
+        self.expect_phase("running", "runtime-order")
+        self.passed("early result prevents late waiting after restart", "completion identity persists across process restart; delayed approval cannot re-open a resolved request or replace another unanswered question")
+
+        question = dict(self.event("question", session="runtime-source", request="source-question"), source="unknown")
+        value = self.send(question)
+        notice_id = value["islandNoticeID"]
+        assert notice_id is not None and value["islandNoticePhase"] == "question"
+        value = self.send(self.event("resumed", session="runtime-source", request="unrelated-result"))
+        row = self.row(value, "runtime-source")
+        assert row["id"] == "cli:runtime-source" and row["phase"] == "question" and row["pending"]
+        assert value["islandNoticeID"] == notice_id, "source discovery lost or replayed the current notice"
+        self.send(self.event("resumed", session="runtime-source", request="source-question"))
+        self.expect_phase("running", "runtime-source")
+        self.passed("source discovery retains current island notice", "unknown-to-CLI migration keeps the pending question and original notice identity; matching completion then clears it")
 
     def verify(self, check_speech):
         self.settings()
@@ -194,6 +267,8 @@ class RuntimeCheck:
         assert self.owns_process(first_pid), "original app exited"
         assert hashlib.sha256((self.directory / "state.json").read_bytes()).hexdigest() == digest_before, "second instance modified state"
         self.passed("second instance preserves the single writer", "lock is held, duplicate launch exits, original PID and state digest remain unchanged")
+        self.verify_async_question()
+        self.verify_request_order_and_source()
 
 
 def main():

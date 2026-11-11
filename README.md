@@ -8,7 +8,9 @@ Codex Signal 是一个原生 macOS 会话提醒工具：收起时是一只蓝色
 
 [下载最新版](https://github.com/Cupcc/codex-signal/releases/latest) · [接入指南](specs/CONNECT.md) · [更新记录](CHANGELOG.md)
 
-<img src="exports/mascot-motion/mascot-five-states.gif" alt="蓝色伙伴的工作、休息、审批、提问和异常五种动效" width="720">
+<img src="exports/mascot-motion/mascot-six-states.gif" alt="蓝色伙伴的运行中、空闲、待确认、待回答、待查看和运行失败六种动效" width="720">
+
+[标准与迷你版动效](exports/mascot-motion/README.md)直接使用应用当前的角色图层和动画轨道导出。
 
 ## 功能
 
@@ -19,6 +21,7 @@ Codex Signal 是一个原生 macOS 会话提醒工具：收起时是一只蓝色
 - **提醒管理**：关闭单条提醒，或使用“全部已读”清除已结束及异常提醒，保留运行中、待确认和待回答会话；支持按 7、15、30 天自动清理，重启后保留状态。
 - **灵动岛提示**：审批、提问、结束与异常会短暂展开，6 秒后自动收回；支持合并提醒、独立开关和设置内预览。静音时仍可看到提示。
 - **应用更新**：默认启动时及每 6 小时检查 GitHub 正式版，自动下载并校验，点击“重启并更新”安装。设置和菜单栏右键菜单始终提供 GitHub 手动下载入口。
+- **自动接入**：安装或升级后的首次启动检查 Codex Hooks，普通启动不检查；设置中可强制重新配置。首次使用仍需在 Codex 中审阅 Hooks。
 - **产品信息**：Finder 和“关于”窗口使用蓝色伙伴图标；设置底部显示版本与构建号，并提供“关于”按钮。“关于”提供项目主页、问题反馈和第三方许可入口。展开面板右下角可直接退出应用，支持 ⌘Q。
 - **原生动效**：折叠伙伴汇总全部会话状态，显示运行数量；展开高度适配列表内容，收起与展开时保持顶部居中。伙伴随状态变化，支持系统“减少动态效果”设置。
 
@@ -30,7 +33,7 @@ Codex Signal 是一个原生 macOS 会话提醒工具：收起时是一只蓝色
 
 1. 从 [Releases](https://github.com/Cupcc/codex-signal/releases/latest) 下载 DMG，打开后将 `CodexSignal.app` 拖入“应用程序”。也可下载 ZIP 后解压安装。
 2. 打开应用，点击屏幕顶部的伙伴或菜单栏的 `◈ Signal` 展开列表。右键菜单栏可检查更新、手动下载、查看版本或退出。
-3. 按下面的步骤接入 Codex。只看效果可在终端运行：
+3. 应用自动配置接入。在 Codex 的 Hooks 设置中审阅并信任后，开启新会话。只看效果可在终端运行：
 
 ```sh
 open -n /Applications/CodexSignal.app --args --demo
@@ -52,22 +55,13 @@ shasum -a 256 -c SHA256SUMS.txt --ignore-missing
 
 ## 接入 Codex
 
-事件接入需要可用的 `python3`。应用包已包含桥接脚本，无需克隆仓库。
+安装、重新安装或升级后的首次启动会检测 Python 3.9+，将桥接脚本安装到应用数据目录，并检查用户级 `hooks.json`：同版本不写文件，缺项才添加，桥接内容更新才原位更新命令。检查结果随本次安装记录保存，普通启动只恢复记录，不检测 Python、不检查 Hooks。移动应用不影响已安装的桥接。
 
-```sh
-python3 /Applications/CodexSignal.app/Contents/Resources/Bridge/signal_bridge.py \
-  --print-hooks --source auto > /tmp/codex-signal-hooks.json
-```
+Codex 要求首次审阅 Hooks：桌面端打开“设置 → Hooks”，CLI 运行 `/hooks`。审阅并信任后开启新会话。应用先显示“已配置 · 等待事件”，收到事件后显示“已接收事件”。[官方 Hooks 说明](https://learn.chatgpt.com/docs/hooks)
 
-检查生成的 Python 路径、脚本路径和数据目录，再将事件条目合并到现有 Hooks 配置，并在 Codex 官方 Hooks 界面完成信任审阅。不要直接覆盖已有配置或 `notify`。移动应用或更换 Python 后，需要重新生成配置。
+点击“一键配置”“重新配置”或“重试”会强制重装桥接、重建 Codex Signal 的 Hooks，恢复本应用接收器的默认设置；其他 Hooks 和 `notify` 会保留。实际修改前保存原文件备份。检查失败或中断后，普通启动不会自动重试，可点击“重试”恢复。未检测到 Python 时会提供安装入口。演示模式不修改 Codex 配置。
 
-从源码运行时，使用仓库中的脚本：
-
-```sh
-python3 scripts/signal_bridge.py --print-hooks --source auto
-```
-
-完整步骤、事件映射和来源识别见 [接入指南](specs/CONNECT.md)。
+配置位置、开发回放和来源识别见 [接入指南](specs/CONNECT.md)。
 
 ### 当前接入边界
 
@@ -111,7 +105,7 @@ python3 scripts/verify_runtime.py --check-speech
 
 ## 构建发布包
 
-版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.5.0（Build 6）**，“关于 Codex Signal”中可查看。
+版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.6.0（Build 7）**，“关于 Codex Signal”中可查看。
 
 ```sh
 ./script/release.sh
@@ -123,8 +117,8 @@ python3 scripts/verify_runtime.py --check-speech
 
 ```text
 dist/releases/
-├── CodexSignal-0.5.0-universal.dmg
-├── CodexSignal-0.5.0-universal.zip
+├── CodexSignal-0.6.0-universal.dmg
+├── CodexSignal-0.6.0-universal.zip
 └── SHA256SUMS.txt
 ```
 

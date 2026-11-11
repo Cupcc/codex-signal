@@ -1,6 +1,24 @@
 # 接入和回放 Codex 事件
 
-本机已通过官方 CLI 界面接入六项 Hooks，真实结果见 [真实接入验收](LIVE-VERIFICATION.md)。此指南用于重新生成待审阅的 Hooks 配置。桥接器不安装配置，不修改 notify，也不修改信任记录。真实来源覆盖与限制见 [接入证据](research/architecture-b.md)。
+安装、重新安装或升级后的首次启动会检查六项用户级 Hooks，无需运行命令或手动合并 JSON。普通启动不检查 Hooks。配置器保留其他 Hooks 和 notify，不修改信任记录。CLI 历史真实结果见 [真实接入验收](LIVE-VERIFICATION.md)，来源覆盖与限制见 [接入证据](research/architecture-b.md)。
+
+## 自动接入
+
+1. 打开 Codex Signal，等待“已配置 · 等待事件”。配置失败时，在设置中点击“重试”。
+2. 在 Codex 桌面端打开“设置 → Hooks”，或在 CLI 运行 `/hooks`，审阅并信任 Codex Signal 的 Hooks。
+3. 开启新会话。收到事件后，接入状态显示“已接收事件”。
+
+应用检测 Python 3.9+，将桥接脚本安装到 `~/Library/Application Support/Codex Signal/Bridge/<内容摘要>/`，并检查 `~/.codex/hooks.json`。设置了 `CODEX_HOME` 时使用该目录。
+
+安装后的首次启动按桥接脚本内容核对版本，与应用版本号独立。同版本且配置完整时，保留原文件内容和修改时间，不生成备份。只缺少部分事件时，仅补齐缺项；桥接版本不同时，原位更新对应接收命令，保留自定义来源、超时、分组、顺序及同组其他处理器。接收路径或 Python 路径失效时会修复。应用升级但桥接内容未变时不重写 Hooks。
+
+应用使用版本号、构建号和可执行文件身份识别一次安装，在数据目录的 `codex-connection.json` 中记录检查结果。普通启动只恢复记录，不运行 Python、不读取或修复 Hooks。移动同一个应用不会触发检查，替换同版本的应用文件也会识别为重新安装。失败或中断同样留存记录，等待用户手动重试。
+
+用户点击“一键配置”“重新配置”或“重试”时执行强制重配：重装桥接，移除本应用旧接收器并按默认设置重新生成六项 Hooks。同版本也会执行，清除本应用接收器的自定义来源、超时和匹配条件；同组其他处理器及其分组设置会保留。开发配置器对应参数为 `--force`。
+
+需要添加、更新条目或强制重配时，原文件先备份为配置目录中的 `hooks.json.codex-signal-backup-<标识>`。格式错误或符号链接配置会显示失败并保留原文件。信任由 Codex 管理，新增或修改 Hooks 后可能需要重新审阅。[官方 Hooks 文档](https://learn.chatgpt.com/docs/hooks)
+
+事件桥本身仍只接收事件，不安装配置。安装由独立的 `configure_hooks.py` 完成。
 
 ## 先验证隔离回放
 
@@ -31,7 +49,11 @@ python3 scripts/replay.py --data-dir /tmp/codex-signal-replay --scenario stale
 
 回放使用固定事件标识。在相同持久化目录中重复执行同一个场景会被去重。重新验收时使用新的隔离目录。`--scenario long-list` 增加 16 个演示会话。
 
-## 生成 CLI 接收配置
+指定 `--data-dir` 的运行不会自动修改真实 Codex 配置。测试自动配置时，同时传入 `--codex-home /tmp/codex-signal-test-home`，将配置写入隔离目录。`--demo` 始终跳过自动配置，界面上的配置按钮也不可用。
+
+## 开发诊断：生成接收配置片段
+
+日常使用由应用自动合并。仅检查生成内容时使用以下步骤。
 
 1. 在仓库根目录生成配置片段。
 
@@ -77,9 +99,11 @@ python3 scripts/signal_bridge.py --input notify --source cli --data-dir /tmp/cod
 
 `PermissionRequest` 映射 approval。若有 tool_use_id，requestId 为其稳定派生值。实际 CLI 的审批输入没有该标识，桥用已记录的 PreToolUse 关联唯一活动调用。Bash 仅按 command 摘要匹配，忽略审批特有的 description。记录不完整或候选不唯一时保持无 ID 降级，使用工具名和输入内容的 SHA-256 摘要。输入正文不进入事件文件或关联数据库。同一回合、相同工具输入的重复请求可能合并。这个降级方式无法证明两个相同请求是同一个实际请求。
 
-`PreToolUse` 仅在工具名恰为 request_user_input 时映射 question。客户端可能绕过默认工具 Hooks，因此这不是完整提问覆盖承诺。
+`PreToolUse` 在工具名为 `request_user_input` 或 `request_user_input_async` 时映射 question。客户端可能绕过默认工具 Hooks，因此这不是完整提问覆盖承诺。
 
-`PostToolUse` 仅在带 tool_use_id 时写 resumed。状态模型只在该 requestId 与当前请求一致时解除等待。经过唯一调用关联的审批可在工具结束时解除。无法关联的等待不会被任意工具结束误清除，需要新回合或其他明确恢复事件。
+`PostToolUse` 仅在带 tool_use_id 时写 resumed，但忽略 `request_user_input_async` 的工具返回。异步提问发出后立即返回，不能据此判断用户已经回答。状态模型只在 requestId 与当前请求一致时解除等待。经过唯一调用关联的审批和同步提问可在工具结束时解除。异步提问保持待回答，直到新回合、明确恢复事件或本轮结束；普通工具活动不会清除它。目前 Hooks 没有经过验证的同轮异步回答事件，不能承诺用户回答后立即恢复运行状态。
+
+每轮可保留多个待处理请求，匹配恢复只移除对应请求。完成消息先到时保留其 ID，迟到审批不会重新挂起。自动来源模式为同一会话和轮次固定关联分区，避免进程检测短暂失败拆散请求。消息覆盖和已知缺口见[消息与提醒链路审查](MESSAGE-AUDIT.md)。
 
 `StopFailure`、普通工具 PreToolUse、没有关联标识的 PostToolUse、SubagentStop 和未知事件不写事件。标准 event 模式可用于经过验证的外部适配器提供 failed，但本桥不从单次工具错误推断整轮失败。
 

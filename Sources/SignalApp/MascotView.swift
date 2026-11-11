@@ -17,11 +17,11 @@ struct PhaseAppearance {
         case .approval:
             self = .init(title: seen ? "待确认（已查看）" : "待确认", color: Color(red: 0.93, green: 0.68, blue: 0.42), asset: "attention", symbol: "exclamationmark.circle.fill")
         case .question:
-            self = .init(title: seen ? "待回答（已查看）" : "待回答", color: Color(red: 0.48, green: 0.73, blue: 1), asset: "question", symbol: "questionmark.circle.fill")
+            self = .init(title: seen ? "待回答（已查看）" : "待回答", color: Color(red: 0.72, green: 0.67, blue: 1), asset: "question", symbol: "questionmark.circle.fill")
         case .completed:
             self = seen
                 ? .init(title: "已查看", color: .secondary, asset: "idle", symbol: "circle")
-                : .init(title: "待查看", color: Color(red: 0.72, green: 0.67, blue: 1), asset: "ready", symbol: "doc.text")
+                : .init(title: "待查看", color: Color(red: 0.48, green: 0.73, blue: 1), asset: "ready", symbol: "doc.text")
         case .failed:
             self = .init(title: "运行失败", color: Color(red: 1, green: 0.55, blue: 0.52), asset: "error", symbol: "exclamationmark.triangle.fill")
         case .stopped:

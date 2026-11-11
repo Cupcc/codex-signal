@@ -4,7 +4,7 @@
 
 ## 先看画面
 
-- [蓝色 Codex 角色设计](ui/08-character.html)：五态动效、状态切换、暂停/重播与实际尺寸；[查看角色总览图](images/character.png)。
+- [蓝色 Codex 角色设计](ui/08-character.html)：六态动效、状态切换、暂停/重播与实际尺寸；[应用动效 GIF](../exports/mascot-motion/README.md)。
 
 - [打开三版对比页](compare.html)：可并排比较、单张查看、切换到实际尺寸；无需联网。
 - [A 伙伴接力](images/relay.png)：早期对照，突出一个任务。
@@ -25,7 +25,7 @@
 
 ## 设计依据
 
-- [角色动效与验证](MOTION.md)：五态节奏、后台暂停和减少动态效果。
+- [角色动效与验证](MOTION.md)：六态节奏、后台暂停和减少动态效果。
 
 - [产品与交互设计](DESIGN.md)：状态、提醒优先级、语音文案、合并去重、显示器、辅助功能及接入边界。
 - [GitHub 项目参考分析](REFERENCE-ANALYSIS.md)：CodeIsland、Coucou、Notchi 的借鉴点和适用范围。
@@ -45,4 +45,4 @@ HTML 内的产品按钮为静态视觉元素；未接入真实会话、系统语
 
 `ui/01-relay.html`、`ui/02-inbox.html`、`ui/03-dock.html`、`ui/04-states.html`、`ui/05-settings.html`、`ui/06-dock-flows.html`（历史 C 场景）、`ui/07-inbox-flows.html`（当前 B 场景）是独立静态画板；依赖 `assets/toy-*.svg`，请保留相对目录。前三版视口为 1440×900，状态图与泊位场景图为 1440×1100，设置图为 1440×1000，B 场景图为 1440×1560。
 
-蓝色括号伙伴由 `assets/build_toys.py` 生成，无外部依赖。直接运行 `python3 assets/build_toys.py` 可重建五个标准 SVG 与五个小尺寸 SVG。正式画面没有外部字体、跟踪脚本或第三方 CDN。
+蓝色括号伙伴由 `assets/build_toys.py` 生成，无外部依赖。直接运行 `python3 assets/build_toys.py` 可重建六个标准 SVG 与六个小尺寸 SVG。正式画面没有外部字体、跟踪脚本或第三方 CDN。

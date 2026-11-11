@@ -19,7 +19,7 @@ DEFS = '''<defs>
 def badge(kind, mini=False):
     if kind not in ('attention','question','error','ready'):
         return ''
-    color = {'attention':'#FFC57B','question':'#D8EDFF','error':'#FFADA6','ready':'#C5B8FF'}[kind]
+    color = {'attention':'#FFC57B','question':'#C5B8FF','error':'#FFADA6','ready':'#D8EDFF'}[kind]
     symbol = {
         'attention':'<path d="M108 11v8m0 5v.2"/>',
         'question':'<path d="M104 13c0-5 9-5 9 0 0 4-5 3-5 7m0 4v.2"/>',
@@ -61,7 +61,7 @@ def build(kind, mini=False):
     if kind == 'question':
         body = '<g transform="rotate(-8 64 66)">'+body+'</g>'
     if kind == 'ready':
-        body += '<rect x="44" y="86" width="40" height="24" rx="5" fill="#E9E3FF" stroke="#7366AD" stroke-width="2"/><path d="M53 94h22m-22 7h15" stroke="#7366AD" stroke-width="3" stroke-linecap="round"/>'
+        body += '<rect x="44" y="86" width="40" height="24" rx="5" fill="#E3F1FF" stroke="#668BAD" stroke-width="2"/><path d="M53 94h22m-22 7h15" stroke="#668BAD" stroke-width="3" stroke-linecap="round"/>'
         left = '<path d="M24 68C20 80 29 98 43 99C49 99 50 92 44 90C35 87 35 77 31 70Z" fill="url(#fin)"/>'
         right = '<path d="M104 68C108 80 99 98 85 99C79 99 78 92 84 90C93 87 93 77 97 70Z" fill="url(#fin)"/>'
     if kind == 'working':

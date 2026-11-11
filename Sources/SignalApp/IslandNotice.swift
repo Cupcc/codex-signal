@@ -27,26 +27,41 @@ struct IslandNotice: Equatable, Identifiable {
     }
 
     static func receiving(_ events: [SignalEvent], sessions: [SignalSession], current: IslandNotice?) -> IslandNotice? {
-        var items = current?.reconciled(with: sessions)?.sessions ?? []
+        let reconciled = current?.reconciled(with: sessions)
+        var items = reconciled?.sessions ?? []
         for event in events {
-            guard let phase = phase(for: event.kind), !(event.isChild && event.kind == .completed),
-                  let session = sessions.first(where: {
-                      $0.sessionId == event.sessionId && $0.source == event.source && $0.turnId == event.turnId
-                          && $0.phase == phase && (!phase.pending || $0.requestId == event.requestId) && !$0.seen && !$0.isDismissed
-                  }) else { continue }
+            guard let session = currentSession(for: event, in: sessions) else { continue }
             items.removeAll { $0.id == session.id }
             items.append(session)
         }
         guard !items.isEmpty else { return nil }
-        if let current, Set(items.map(identity)) == Set(current.sessions.map(identity)) { return current.reconciled(with: sessions) }
+        if let reconciled, Set(items.map(identity)) == Set(reconciled.sessions.map(identity)) { return reconciled }
         return IslandNotice(sessions: items)
     }
 
     func reconciled(with latest: [SignalSession]) -> IslandNotice? {
-        let items = sessions.compactMap { previous in
-            latest.first { Self.identity($0) == Self.identity(previous) && !$0.seen && !$0.isDismissed }
+        let items = sessions.compactMap { previous -> SignalSession? in
+            guard let session = Self.successor(of: previous, in: latest),
+                  session.turnId == previous.turnId, session.phase == previous.phase,
+                  session.requestId == previous.requestId, !session.seen, !session.isDismissed else { return nil }
+            return session
         }
         return items.isEmpty ? nil : IslandNotice(id: id, sessions: items)
+    }
+
+    static func currentSession(for event: SignalEvent, in sessions: [SignalSession]) -> SignalSession? {
+        guard let phase = phase(for: event.kind), !(event.isChild && event.kind == .completed) else { return nil }
+        return sessions.first {
+            $0.sessionId == event.sessionId && $0.source == event.source && $0.turnId == event.turnId
+                && $0.phase == phase && (!phase.pending || $0.requestId == event.requestId) && !$0.seen && !$0.isDismissed
+        }
+    }
+
+    static func successor(of previous: SignalSession, in latest: [SignalSession]) -> SignalSession? {
+        if let exact = latest.first(where: { $0.id == previous.id }) { return exact }
+        guard previous.source == .unknown else { return nil }
+        let known = latest.filter { $0.sessionId == previous.sessionId && $0.source != .unknown }
+        return known.count == 1 ? known[0] : nil
     }
 
     private static func identity(_ session: SignalSession) -> String {

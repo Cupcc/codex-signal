@@ -70,17 +70,36 @@ def _mark_incomplete(marker):
         os.close(descriptor)
 
 
+def _auto_owner(connection, data_dir, session, turn):
+    connection.execute("""CREATE TABLE IF NOT EXISTS auto_owners (
+        session_id TEXT NOT NULL,
+        turn_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        PRIMARY KEY (session_id, turn_id)
+    )""")
+    owner = connection.execute("SELECT source FROM auto_owners WHERE session_id = ? AND turn_id = ?", (session, turn)).fetchone()
+    if owner is not None:
+        return owner[0]
+    legacy = connection.execute("SELECT DISTINCT source FROM calls WHERE session_id = ? AND turn_id = ?", (session, turn)).fetchall()
+    source = legacy[0][0] if len(legacy) == 1 else "auto"
+    if len(legacy) > 1 or any(_incomplete_marker(data_dir, old, session, turn).exists()
+                              for old in ("cli", "desktop", "unknown")):
+        _mark_incomplete(_incomplete_marker(data_dir, "auto", session, turn))
+    connection.execute("INSERT INTO auto_owners VALUES (?, ?, ?)", (session, turn, source))
+    return source
+
 
 def enrich_hook(raw, source, data_dir):
     result = dict(raw)
     name = raw.get("hook_event_name")
     session = raw.get("session_id")
     turn = raw.get("turn_id")
-    if source not in {"cli", "desktop", "unknown"} or name not in EVENTS or not _identifier(session) or not _identifier(turn):
+    if source not in {"auto", "cli", "desktop", "unknown"} or name not in EVENTS or not _identifier(session) or not _identifier(turn):
         return result
     connection = None
     recording_pre = False
     marker = _incomplete_marker(data_dir, source, session, turn)
+    automatic = source == "auto"
     try:
         fingerprint = _fingerprint(raw) if name in {"PreToolUse", "PermissionRequest", "PostToolUse"} else None
         tool_id = raw.get("tool_use_id")
@@ -106,17 +125,25 @@ def enrich_hook(raw, source, data_dir):
                 finished INTEGER NOT NULL CHECK (finished IN (0, 1)),
                 PRIMARY KEY (source, session_id, turn_id, tool_id)
             )""")
+            if automatic:
+                source = _auto_owner(connection, data_dir, session, turn)
             identity = (source, session, turn)
             if name == "PreToolUse":
                 connection.execute("INSERT OR IGNORE INTO calls VALUES (?, ?, ?, ?, ?, 0)", (*identity, tool_id, fingerprint))
             elif name == "PermissionRequest":
                 matches = connection.execute("SELECT tool_id FROM calls WHERE source = ? AND session_id = ? AND turn_id = ? AND fingerprint = ? AND finished = 0 LIMIT 2", (*identity, fingerprint)).fetchall()
-                if len(matches) == 1 and not marker.exists():
+                owner_marker = _incomplete_marker(data_dir, source, session, turn)
+                if len(matches) == 1 and not marker.exists() and not owner_marker.exists():
                     result["tool_use_id"] = matches[0][0]
             elif name == "PostToolUse":
                 connection.execute("""INSERT INTO calls VALUES (?, ?, ?, ?, ?, 1)
                     ON CONFLICT(source, session_id, turn_id, tool_id) DO UPDATE SET finished = 1""", (*identity, tool_id, fingerprint or ""))
             elif name == "UserPromptSubmit":
+                if automatic:
+                    connection.execute("""DELETE FROM calls WHERE session_id = ? AND turn_id != ?
+                        AND EXISTS (SELECT 1 FROM auto_owners WHERE auto_owners.session_id = calls.session_id
+                            AND auto_owners.turn_id = calls.turn_id AND auto_owners.source = calls.source)""", (session, turn))
+                    connection.execute("DELETE FROM auto_owners WHERE session_id = ? AND turn_id != ?", (session, turn))
                 connection.execute("DELETE FROM calls WHERE source = ? AND session_id = ? AND turn_id != ?", identity)
             else:
                 connection.execute("DELETE FROM calls WHERE source = ? AND session_id = ? AND turn_id = ?", identity)

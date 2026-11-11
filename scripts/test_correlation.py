@@ -79,6 +79,55 @@ class CorrelationTests(unittest.TestCase):
         for raw in [self.hook("PermissionRequest", session="s-other"), self.hook("PermissionRequest", turn="t-other"), self.hook("PermissionRequest", command="/bin/echo different")]:
             self.assertNotIn("tool_use_id", self.enrich(raw))
 
+    def test_auto_adopts_one_legacy_owner_and_keeps_it_when_other_source_appears(self):
+        self.enrich(self.hook("PreToolUse", "legacy-call"), "unknown")
+        self.assertEqual(self.enrich(self.hook("PermissionRequest"), "auto")["tool_use_id"], "legacy-call")
+        self.enrich(self.hook("PreToolUse", "desktop-call"), "desktop")
+        self.assertEqual(self.enrich(self.hook("PermissionRequest"), "auto")["tool_use_id"], "legacy-call")
+        self.enrich(self.hook("PostToolUse", "legacy-call"), "auto")
+        self.assertNotIn("tool_use_id", self.enrich(self.hook("PermissionRequest"), "auto"))
+        self.assertEqual(self.enrich(self.hook("PermissionRequest"), "desktop")["tool_use_id"], "desktop-call")
+
+    def test_auto_never_guesses_between_legacy_owners(self):
+        self.enrich(self.hook("PreToolUse", "cli-call"), "cli")
+        self.enrich(self.hook("PreToolUse", "desktop-call"), "desktop")
+        self.assertNotIn("tool_use_id", self.enrich(self.hook("PermissionRequest"), "auto"))
+        self.enrich(self.hook("PreToolUse", "auto-call"), "auto")
+        self.assertNotIn("tool_use_id", self.enrich(self.hook("PermissionRequest"), "auto"))
+        self.assertEqual(self.enrich(self.hook("PermissionRequest"), "cli")["tool_use_id"], "cli-call")
+        self.assertEqual(self.enrich(self.hook("PermissionRequest"), "desktop")["tool_use_id"], "desktop-call")
+
+    def test_auto_honors_legacy_incomplete_marker(self):
+        from request_correlation import _incomplete_marker, _mark_incomplete
+        self.enrich(self.hook("PreToolUse", "legacy-call"), "unknown")
+        _mark_incomplete(_incomplete_marker(self.root, "unknown", "s-a", "t-a"))
+        self.assertNotIn("tool_use_id", self.enrich(self.hook("PermissionRequest"), "auto"))
+
+    def test_auto_honors_lost_legacy_pre_with_no_database_row(self):
+        from request_correlation import _incomplete_marker, _mark_incomplete
+        _mark_incomplete(_incomplete_marker(self.root, "unknown", "s-a", "t-a"))
+        self.enrich(self.hook("PreToolUse", "auto-call"), "auto")
+        self.assertNotIn("tool_use_id", self.enrich(self.hook("PermissionRequest"), "auto"))
+
+    def test_new_auto_owner_remains_separate_from_later_explicit_sources(self):
+        self.enrich(self.hook("PreToolUse", "auto-call"), "auto")
+        self.enrich(self.hook("PreToolUse", "cli-call"), "cli")
+        self.enrich(self.hook("PreToolUse", "desktop-call"), "desktop")
+        self.assertEqual(self.enrich(self.hook("PermissionRequest"), "auto")["tool_use_id"], "auto-call")
+        self.assertEqual(self.enrich(self.hook("PermissionRequest"), "cli")["tool_use_id"], "cli-call")
+        self.assertEqual(self.enrich(self.hook("PermissionRequest"), "desktop")["tool_use_id"], "desktop-call")
+
+    def test_auto_lifecycle_cleans_owner_records(self):
+        self.enrich(self.hook("PreToolUse", "auto-call"), "auto")
+        self.enrich(self.hook("UserPromptSubmit", turn="next"), "auto")
+        database = self.root / "correlation/requests.sqlite3"
+        connection = sqlite3.connect(database)
+        try:
+            self.assertEqual(connection.execute("SELECT turn_id FROM auto_owners").fetchall(), [("next",)])
+            self.assertEqual(connection.execute("SELECT tool_id FROM calls").fetchall(), [])
+        finally:
+            connection.close()
+
     def test_lifecycle_cleanup_does_not_touch_other_session(self):
         self.enrich(self.hook("PreToolUse", "call-a"))
         self.enrich(self.hook("PreToolUse", "call-other", session="s-other"))

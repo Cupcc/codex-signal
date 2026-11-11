@@ -4,6 +4,7 @@ import SignalCore
 
 struct SignalSettings: Codable {
     var speechEnabled = true
+    var speechVolume = 100.0
     var islandAlertsEnabled = true
     var quietHoursEnabled = false
     var quietStart = 22
@@ -18,6 +19,7 @@ extension SignalSettings {
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         speechEnabled = try values.decodeIfPresent(Bool.self, forKey: .speechEnabled) ?? true
+        speechVolume = min(100, max(0, try values.decodeIfPresent(Double.self, forKey: .speechVolume) ?? 100))
         islandAlertsEnabled = try values.decodeIfPresent(Bool.self, forKey: .islandAlertsEnabled) ?? true
         quietHoursEnabled = try values.decodeIfPresent(Bool.self, forKey: .quietHoursEnabled) ?? false
         quietStart = try values.decodeIfPresent(Int.self, forKey: .quietStart) ?? 22
@@ -50,8 +52,10 @@ final class AppModel: ObservableObject {
     @Published var selectedID: String?
     @Published var sessionFilter: SessionFilter = .all
     @Published var updateSettingsRequested = false
-    @Published var expanded = false
+    @Published private(set) var expanded = false
+    let willCollapse = PassthroughSubject<Void, Never>()
     @Published var speechEnabled = true
+    @Published var speechVolume = 100.0
     @Published var islandAlertsEnabled = true
     @Published private(set) var islandNotice: IslandNotice?
     @Published var quietHoursEnabled = false
@@ -66,6 +70,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isNavigating = false
     let dataDirectory: URL
     let updater: UpdateController
+    let connection: CodexConnection
     private var store = SessionStore()
     private var timer: Timer?
     private var subscriptions = Set<AnyCancellable>()
@@ -98,9 +103,10 @@ final class AppModel: ObservableObject {
     var unreadCount: Int { sessions.filter(\.unread).count }
     var clearableSessions: [SignalSession] { activeSessions.filter { $0.phase != .running && !$0.pending } }
 
-    init(dataDirectory: URL, demo: Bool, feedbackDuration: Duration = .seconds(2), islandNoticeDuration: Duration = .seconds(6)) {
+    init(dataDirectory: URL, demo: Bool, feedbackDuration: Duration = .seconds(2), islandNoticeDuration: Duration = .seconds(6), codexHome: URL = CodexConnection.defaultCodexHome) {
         self.dataDirectory = dataDirectory
         self.updater = UpdateController(dataDirectory: dataDirectory)
+        self.connection = CodexConnection(dataDirectory: dataDirectory, codexHome: codexHome)
         self.isDemo = demo
         self.feedbackDuration = feedbackDuration
         self.islandNoticeDuration = islandNoticeDuration
@@ -110,6 +116,7 @@ final class AppModel: ObservableObject {
             let settingsURL = dataDirectory.appendingPathComponent("settings.json")
             if let data = try? Data(contentsOf: settingsURL), let settings = try? JSONDecoder().decode(SignalSettings.self, from: data) {
                 speechEnabled = settings.speechEnabled
+                speechVolume = settings.speechVolume
                 islandAlertsEnabled = settings.islandAlertsEnabled
                 quietHoursEnabled = settings.quietHoursEnabled
                 quietStart = min(23, max(0, settings.quietStart))
@@ -131,6 +138,7 @@ final class AppModel: ObservableObject {
             if demo && sessions.isEmpty { seedDemo() }
             expireReminders()
         } catch { showIssue("无法读取数据目录", kind: .startup, details: error.localizedDescription, directory: dataDirectory) }
+        speech.volume = Float(speechVolume / 100)
         speech.allowed = { [weak self] in
             guard let self else { return false }
             return self.speechEnabled && !VoicePolicy.isQuiet(hour: Calendar.current.component(.hour, from: Date()), enabled: self.quietHoursEnabled, start: self.quietStart, end: self.quietEnd)
@@ -143,27 +151,35 @@ final class AppModel: ObservableObject {
         Publishers.CombineLatest4($speechEnabled, $quietHoursEnabled, $quietStart, $quietEnd)
             .dropFirst().sink { [weak self] enabled, quiet, start, end in
                 guard let self else { return }
-                let settings = SignalSettings(speechEnabled: enabled, islandAlertsEnabled: self.islandAlertsEnabled, quietHoursEnabled: quiet, quietStart: start, quietEnd: end,
+                let settings = SignalSettings(speechEnabled: enabled, speechVolume: self.speechVolume, islandAlertsEnabled: self.islandAlertsEnabled, quietHoursEnabled: quiet, quietStart: start, quietEnd: end,
                                               retentionDays: self.retentionDays, preferredTerminal: self.preferredTerminal)
                 self.saveSettings(settings)
                 self.speech.cancel()
             }.store(in: &subscriptions)
+        $speechVolume.dropFirst().sink { [weak self] volume in
+            guard let self else { return }
+            self.speech.volume = Float(volume / 100)
+            self.saveSettings(SignalSettings(speechEnabled: self.speechEnabled, speechVolume: volume,
+                                             islandAlertsEnabled: self.islandAlertsEnabled, quietHoursEnabled: self.quietHoursEnabled,
+                                             quietStart: self.quietStart, quietEnd: self.quietEnd,
+                                             retentionDays: self.retentionDays, preferredTerminal: self.preferredTerminal))
+        }.store(in: &subscriptions)
         $retentionDays.dropFirst().sink { [weak self] days in
             guard let self else { return }
-            let settings = SignalSettings(speechEnabled: self.speechEnabled, islandAlertsEnabled: self.islandAlertsEnabled, quietHoursEnabled: self.quietHoursEnabled,
+            let settings = SignalSettings(speechEnabled: self.speechEnabled, speechVolume: self.speechVolume, islandAlertsEnabled: self.islandAlertsEnabled, quietHoursEnabled: self.quietHoursEnabled,
                                           quietStart: self.quietStart, quietEnd: self.quietEnd, retentionDays: days,
                                           preferredTerminal: self.preferredTerminal)
             if self.saveSettings(settings) { self.expireReminders(retentionDays: days) }
         }.store(in: &subscriptions)
         $preferredTerminal.dropFirst().sink { [weak self] terminal in
             guard let self else { return }
-            self.saveSettings(SignalSettings(speechEnabled: self.speechEnabled, islandAlertsEnabled: self.islandAlertsEnabled, quietHoursEnabled: self.quietHoursEnabled,
+            self.saveSettings(SignalSettings(speechEnabled: self.speechEnabled, speechVolume: self.speechVolume, islandAlertsEnabled: self.islandAlertsEnabled, quietHoursEnabled: self.quietHoursEnabled,
                                              quietStart: self.quietStart, quietEnd: self.quietEnd,
                                              retentionDays: self.retentionDays, preferredTerminal: terminal))
         }.store(in: &subscriptions)
         $islandAlertsEnabled.dropFirst().sink { [weak self] enabled in
             guard let self else { return }
-            self.saveSettings(SignalSettings(speechEnabled: self.speechEnabled, islandAlertsEnabled: enabled,
+            self.saveSettings(SignalSettings(speechEnabled: self.speechEnabled, speechVolume: self.speechVolume, islandAlertsEnabled: enabled,
                                              quietHoursEnabled: self.quietHoursEnabled, quietStart: self.quietStart,
                                              quietEnd: self.quietEnd, retentionDays: self.retentionDays,
                                              preferredTerminal: self.preferredTerminal))
@@ -173,6 +189,9 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             let candidates = self.activeSessions.filter(value.includes)
             self.selectedID = candidates.last?.id
+            DispatchQueue.main.async { [weak self] in self?.writeSnapshot() }
+        }.store(in: &subscriptions)
+        connection.$state.dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async { [weak self] in self?.writeSnapshot() }
         }.store(in: &subscriptions)
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -334,13 +353,25 @@ final class AppModel: ObservableObject {
             } catch { cleanupError = error }
         }
         lastIntake = Date()
+        if !silent && !isDemo { connection.receivedEvent() }
         for id in expired { speech.cancel(sessionID: id) }
         if changed {
             if let selectedSessionID, !store.sessions.contains(where: { $0.id == selectedID }) {
                 selectedID = store.sessions.first(where: { $0.sessionId == selectedSessionID })?.id
             }
             synchronize()
-            let recent = announcements.filter { $0.occurredAt > now - Double(retentionDays) * 86_400 }
+            for old in previous.sessions {
+                guard let current = IslandNotice.successor(of: old, in: sessions) else {
+                    speech.discardQueued(sessionID: old.id)
+                    continue
+                }
+                if old.turnId != current.turnId || old.phase != current.phase || old.requestId != current.requestId {
+                    speech.discardQueued(sessionID: current.id)
+                }
+            }
+            let recent = announcements.map(store.canonicalEvent).filter {
+                $0.occurredAt > now - Double(retentionDays) * 86_400 && IslandNotice.currentSession(for: $0, in: sessions) != nil
+            }
             for event in recent { speech.enqueue(event) }
             if islandAlertsEnabled && !expanded && !speech.sceneQuiet {
                 presentIslandNotice(IslandNotice.receiving(recent, sessions: sessions, current: islandNotice))
@@ -354,7 +385,13 @@ final class AppModel: ObservableObject {
     }
 
     private func synchronize() {
-        sessions = store.sortedSessions()
+        let latest = store.sortedSessions()
+        for previous in sessions where previous.source == .unknown {
+            if let current = IslandNotice.successor(of: previous, in: latest), current.id != previous.id {
+                speech.rekeySession(from: previous.id, to: current.id)
+            }
+        }
+        sessions = latest
         if let notice = islandNotice {
             presentIslandNotice(notice.reconciled(with: sessions))
         }
@@ -363,6 +400,7 @@ final class AppModel: ObservableObject {
 
     func setExpanded(_ value: Bool) {
         let opening = value && !expanded
+        if expanded && !value { willCollapse.send() }
         expanded = value
         if value { dismissIslandNotice() }
         if opening || !visibleSessions.contains(where: { $0.id == selectedID }) { selectedID = visibleSessions.last?.id }
@@ -475,6 +513,10 @@ final class AppModel: ObservableObject {
         setExpanded(false)
         presentIslandNotice(.preview)
         if speech.allowed() { speech.preview() }
+    }
+
+    func previewSpeech() {
+        speech.preview()
     }
 
     func openIslandNotice() {
@@ -608,7 +650,11 @@ final class AppModel: ObservableObject {
             "islandNoticePhase": islandNotice?.primary.phase.rawValue as Any? ?? NSNull(),
             "islandNoticeCount": islandNotice?.sessions.count ?? 0,
             "speechCount": speechCount, "lastSpeech": lastSpeech as Any? ?? NSNull(),
+            "speechVolume": speechVolume, "speechPlayerVolume": speech.lastPlaybackVolume as Any? ?? NSNull(),
+            "speechAudioPath": speech.lastPlaybackURL?.path as Any? ?? NSNull(),
             "isDemo": isDemo, "status": statusMessage, "isNavigating": isNavigating,
+            "connectionStatus": connection.status,
+            "connectionHooksPath": connection.installation?.hooksPath as Any? ?? NSNull(),
             "lastIntake": lastIntake?.timeIntervalSince1970 as Any? ?? NSNull()
         ]
         if let data = try? JSONSerialization.data(withJSONObject: snapshot, options: [.prettyPrinted, .sortedKeys]) {

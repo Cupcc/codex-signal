@@ -44,7 +44,7 @@ for RESOURCE in "$BIN_DIR"/*.bundle; do
     ditto "$RESOURCE" "$APP/Contents/Resources/$(basename "$RESOURCE")"
   fi
 done
-cp scripts/signal_bridge.py scripts/request_correlation.py "$APP/Contents/Resources/Bridge/"
+cp scripts/signal_bridge.py scripts/request_correlation.py scripts/configure_hooks.py "$APP/Contents/Resources/Bridge/"
 ditto ThirdParty "$APP/Contents/Resources/ThirdParty"
 cp VERSION BUILD_NUMBER "$APP/Contents/Resources/"
 cp Sources/SignalApp/Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"

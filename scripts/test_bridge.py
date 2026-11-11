@@ -174,6 +174,30 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(event["requestId"], "tool:call-before-upgrade")
         self.assertNotIn("terminalTTY", event)
 
+    def test_auto_request_identity_survives_process_detection_failure(self):
+        import signal_bridge
+        for initial, later in [(None, "cli"), ("cli", None), (None, "desktop"), ("desktop", None)]:
+            with self.subTest(initial=initial, later=later):
+                data = self.root / (str(initial) + "-" + str(later))
+                tool = dict(tool_name="Bash", tool_input={"command": "true"})
+                for name, detected, extra in [
+                    ("PreToolUse", initial, {"tool_use_id": "call-auto"}),
+                    ("PermissionRequest", later, {}),
+                    ("PostToolUse", later, {"tool_use_id": "call-auto"}),
+                ]:
+                    raw = self.hook(name, **tool, **extra)
+                    with patch.dict(os.environ, self.environment), \
+                         patch.object(sys, "argv", [str(BRIDGE), "--source", "auto", "--data-dir", str(data)]), \
+                         patch.object(sys, "stdin", io.TextIOWrapper(io.BytesIO(json.dumps(raw).encode()))), \
+                         patch("signal_bridge.detect_source", return_value=detected), \
+                         patch("signal_bridge.codex_database_source", return_value="cli"), \
+                         patch("signal_bridge.enrich_metadata", side_effect=lambda event, _: event):
+                        self.assertEqual(signal_bridge.main(), 0)
+                events = sorted((json.loads(path.read_text()) for path in (data / "inbox").glob("*.json")),
+                                key=lambda event: event["occurredAt"])
+                self.assertEqual([event["kind"] for event in events], ["approval", "resumed"])
+                self.assertEqual([event["requestId"] for event in events], ["tool:call-auto"] * 2)
+
     def test_missing_old_locked_or_newer_unknown_database_does_not_guess(self):
         from signal_bridge import codex_database_source
         root = self.fake_home / ".codex"
@@ -250,6 +274,24 @@ class BridgeTests(unittest.TestCase):
     def test_only_explicit_question_tool_is_question(self):
         self.run_bridge(self.hook("PreToolUse", tool_name="request_user_input", tool_use_id="ask-1"))
         self.assertEqual(self.events()[0]["kind"], "question")
+
+    def test_async_question_return_does_not_mean_user_answered(self):
+        tool = dict(tool_name="request_user_input_async", tool_use_id="ask-async",
+                    tool_input={"questions": [{"title": "PRIVATE_QUESTION"}]})
+        self.run_bridge(self.hook("PreToolUse", **tool))
+        self.run_bridge(self.hook("PostToolUse", tool_response="PRIVATE_RESPONSE", **tool))
+        events = self.events()
+        self.assertEqual([event["kind"] for event in events], ["question"])
+        self.assertEqual(events[0]["requestId"], "tool:ask-async")
+        self.assertNotIn("PRIVATE_", json.dumps(events))
+
+    def test_blocking_question_return_resumes_the_matching_request(self):
+        tool = dict(tool_name="request_user_input", tool_use_id="ask-blocking")
+        self.run_bridge(self.hook("PreToolUse", **tool))
+        self.run_bridge(self.hook("PostToolUse", **tool))
+        events = sorted(self.events(), key=lambda event: event["occurredAt"])
+        self.assertEqual([event["kind"] for event in events], ["question", "resumed"])
+        self.assertEqual(events[0]["requestId"], events[1]["requestId"])
 
     def test_lifecycle_is_not_success_inference(self):
         for name in ["UserPromptSubmit", "Stop", "Interrupt", "SessionEnd"]:
