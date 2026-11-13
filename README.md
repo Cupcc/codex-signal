@@ -113,20 +113,20 @@ python3 scripts/verify_runtime.py --check-speech
 
 ## 构建发布包
 
-版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.8.0（Build 12）**，“关于 Codex Signal”中可查看。
+版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.8.1（Build 13）**，“关于 Codex Signal”中可查看。
 
 ```sh
 ./script/release.sh
 ```
 
-自动更新读取 [GitHub Releases API](https://docs.github.com/en/rest/releases/releases#get-the-latest-release) 的最新正式版，要求 `vX.Y.Z` 标签、`CodexSignal-X.Y.Z-arm64.zip` 资源及 GitHub 提供的 `sha256:` digest。缺少资源或摘要时保留手动下载入口；发布新版本必须递增 `VERSION`。下载后验证 SHA-256、应用标识、版本、最低系统版本和代码签名完整性；当前 ad-hoc 签名不代表 Apple 公证或独立的发布者身份认证。
+自动更新读取最新正式版附带的 `SHA256SUMS.txt`（`releases/latest/download/SHA256SUMS.txt`），要求 `vX.Y.Z` 标签、`CodexSignal-X.Y.Z-arm64.zip` 资源，且校验文件中恰好有一行对应该 ZIP。不使用 GitHub API，因此不受其每小时 60 次的匿名限额影响。缺少资源或校验行时保留手动下载入口；发布新版本必须递增 `VERSION`。下载后验证 SHA-256、应用标识、版本、最低系统版本和代码签名完整性；当前 ad-hoc 签名不代表 Apple 公证或独立的发布者身份认证。
 
 脚本只编译 arm64 的 Release 可执行文件，产物含其他架构时停止，再打包资源、事件桥和第三方许可，完成 ad-hoc 签名与校验，生成：
 
 ```text
 dist/releases/
-├── CodexSignal-0.8.0-arm64.dmg
-├── CodexSignal-0.8.0-arm64.zip
+├── CodexSignal-0.8.1-arm64.dmg
+├── CodexSignal-0.8.1-arm64.zip
 └── SHA256SUMS.txt
 ```
 

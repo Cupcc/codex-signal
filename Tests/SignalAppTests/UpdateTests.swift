@@ -3,15 +3,12 @@ import Testing
 @testable import SignalApp
 
 struct UpdateTests {
-    private func release(version: String = "v0.3.0", digest: String? = "sha256:" + String(repeating: "a", count: 64),
-                         host: String = "github.com", prerelease: Bool = false) throws -> UpdateRelease {
-        let asset: [String: Any] = [
-            "name": "CodexSignal-0.3.0-arm64.zip",
-            "browser_download_url": "https://\(host)/Cupcc/codex-signal/releases/download/\(version)/CodexSignal-0.3.0-arm64.zip",
-            "digest": digest as Any? ?? NSNull()
-        ]
-        let data = try JSONSerialization.data(withJSONObject: ["tag_name": version, "draft": false, "prerelease": prerelease, "assets": [asset]])
-        return try JSONDecoder().decode(UpdateRelease.self, from: data)
+    private let hash = String(repeating: "a", count: 64)
+
+    private func release(_ checksums: String) throws -> UpdateRelease { try UpdateRelease(checksums: Data(checksums.utf8)) }
+
+    private func release(version: String = "0.3.0") throws -> UpdateRelease {
+        try release("\(hash)  CodexSignal-\(version)-arm64.zip\n\(String(repeating: "b", count: 64))  CodexSignal-\(version)-arm64.dmg\n")
     }
 
     @Test func versionsCompareNumerically() throws {
@@ -23,20 +20,34 @@ struct UpdateTests {
         #expect(AppVersion("1.2.999999999999999999999999") == nil)
     }
 
-    @Test func onlyNewStableReleaseIsOffered() throws {
-        let current = try #require(AppVersion("0.2.0"))
-        #expect(try release().update(after: current)?.version == AppVersion("0.3.0"))
+    @Test func onlyNewerReleaseIsOffered() throws {
+        let older = try #require(AppVersion("0.2.0"))
+        let package = try #require(try release().update(after: older))
+        #expect(package.version == AppVersion("0.3.0"))
+        #expect(package.url.absoluteString == "https://github.com/Cupcc/codex-signal/releases/download/v0.3.0/CodexSignal-0.3.0-arm64.zip")
+        #expect(package.sha256 == hash)
         #expect(try release().update(after: #require(AppVersion("0.3.0"))) == nil)
         #expect(try release().update(after: #require(AppVersion("0.4.0"))) == nil)
-        #expect(try release(prerelease: true).update(after: current) == nil)
     }
 
-    @Test func unverifiedOrForeignPackagesAreRejected() throws {
-        let current = try #require(AppVersion("0.2.0"))
-        #expect(throws: UpdateError.self) { try release(digest: nil).update(after: current) }
-        #expect(throws: UpdateError.self) { try release(digest: "sha256:abc").update(after: current) }
-        #expect(throws: UpdateError.self) { try release(host: "example.org").update(after: current) }
-        #expect(throws: UpdateError.self) { try release(version: "invalid").update(after: current) }
+    @Test func publishedChecksumFileIsRead() throws {
+        // SHA256SUMS.txt of v0.8.0 as uploaded by script/release.sh.
+        let published = try release("""
+            91e95878571f522d605501b2e3def6844db9a0919f914b8e08eff7e40852c744  CodexSignal-0.8.0-arm64.zip
+            172a41d9060ee97ef2964051d04f03504e107a9e50da5cc822b041b522963cbe  CodexSignal-0.8.0-arm64.dmg
+
+            """)
+        #expect(published.version == AppVersion("0.8.0"))
+        #expect(published.sha256 == "91e95878571f522d605501b2e3def6844db9a0919f914b8e08eff7e40852c744")
+        #expect(UpdateRelease.checksums.absoluteString == "https://github.com/Cupcc/codex-signal/releases/latest/download/SHA256SUMS.txt")
+    }
+
+    @Test func releasesWithoutOneVerifiableArm64PackageAreRejected() throws {
+        for checksums in ["", "\(hash)  CodexSignal-0.3.0-universal.zip\n", "abc  CodexSignal-0.3.0-arm64.zip\n",
+                          "\(hash)  CodexSignal-0.3-arm64.zip\n", "\(hash)  Other-0.3.0-arm64.zip\n",
+                          "\(hash)  CodexSignal-0.3.0-arm64.zip\n\(hash)  CodexSignal-0.4.0-arm64.zip\n", "<!DOCTYPE html>"] {
+            #expect(throws: UpdateError.self, "\(checksums)") { try release(checksums) }
+        }
     }
 
     @Test func corruptedDownloadDoesNotPassVerification() throws {
@@ -50,7 +61,7 @@ struct UpdateTests {
     }
 
     @Test func httpFailuresAreNotTreatedAsCurrent() throws {
-        let url = UpdateRelease.endpoint
+        let url = UpdateRelease.checksums
         for code in [403, 404, 429, 500] {
             let response = try #require(HTTPURLResponse(url: url, statusCode: code, httpVersion: nil, headerFields: nil))
             #expect(throws: UpdateError.self) { try UpdateService.validate(response) }

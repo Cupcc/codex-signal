@@ -7,13 +7,11 @@ actor UpdateService {
     init(session: URLSession = .shared) { self.session = session }
 
     func latest(after version: AppVersion) async throws -> UpdatePackage? {
-        var request = URLRequest(url: UpdateRelease.endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+        var request = URLRequest(url: UpdateRelease.checksums, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
         request.setValue("CodexSignal/\(version)", forHTTPHeaderField: "User-Agent")
         let (data, response) = try await session.data(for: request)
         try Self.validate(response)
-        return try JSONDecoder().decode(UpdateRelease.self, from: data).update(after: version)
+        return try UpdateRelease(checksums: data).update(after: version)
     }
 
     func download(_ package: UpdatePackage, into directory: URL) async throws -> URL {

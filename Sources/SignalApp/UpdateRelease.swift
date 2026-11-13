@@ -15,43 +15,36 @@ struct AppVersion: Equatable, Comparable, CustomStringConvertible {
     static func < (lhs: Self, rhs: Self) -> Bool { lhs.components.lexicographicallyPrecedes(rhs.components) }
 }
 
-struct UpdateRelease: Decodable {
-    struct Asset: Decodable {
-        let name: String
-        let browserDownloadURL: URL
-        let digest: String?
-        enum CodingKeys: String, CodingKey {
-            case name, digest
-            case browserDownloadURL = "browser_download_url"
-        }
-    }
-    let tagName: String
-    let draft: Bool
-    let prerelease: Bool
-    let assets: [Asset]
-    enum CodingKeys: String, CodingKey {
-        case draft, prerelease, assets
-        case tagName = "tag_name"
-    }
-
+/// The latest stable release, read from its `SHA256SUMS.txt` instead of the REST API.
+/// The API allows 60 anonymous requests per hour per address, which shared networks
+/// exhaust (HTTP 403); release downloads have no such limit.
+struct UpdateRelease {
     static let downloadPage = URL(string: "https://github.com/Cupcc/codex-signal/releases/latest")!
-    static let endpoint = URL(string: "https://api.github.com/repos/Cupcc/codex-signal/releases/latest")!
+    static let checksums = URL(string: "https://github.com/Cupcc/codex-signal/releases/latest/download/SHA256SUMS.txt")!
 
-    func update(after current: AppVersion) throws -> UpdatePackage? {
-        guard !draft, !prerelease else { return nil }
-        guard let version = AppVersion(tagName) else { throw UpdateError.invalidRelease }
+    let version: AppVersion
+    let sha256: String
+
+    /// Reads the arm64 ZIP's line of `shasum -a 256` output: `<hash>  CodexSignal-<version>-arm64.zip`.
+    init(checksums data: Data) throws {
+        let packages = String(decoding: data, as: UTF8.self).split(whereSeparator: \.isNewline)
+            .compactMap { line -> (version: AppVersion, sha256: String)? in
+                let fields = line.split(separator: " ")
+                guard fields.count == 2 else { return nil }
+                let name = fields[1].hasPrefix("*") ? fields[1].dropFirst() : fields[1]
+                guard name.hasPrefix("CodexSignal-"), name.hasSuffix("-arm64.zip"),
+                      let version = AppVersion(String(name.dropFirst(12).dropLast(10))) else { return nil }
+                return (version, fields[0].lowercased())
+            }
+        guard packages.count == 1, let package = packages.first, package.sha256.count == 64,
+              package.sha256.allSatisfy({ $0.isASCII && $0.isHexDigit }) else { throw UpdateError.invalidRelease }
+        (version, sha256) = package
+    }
+
+    func update(after current: AppVersion) -> UpdatePackage? {
         guard version > current else { return nil }
-        let name = "CodexSignal-\(version)-arm64.zip"
-        guard let asset = assets.first(where: { $0.name == name }),
-              asset.browserDownloadURL.scheme == "https",
-              asset.browserDownloadURL.host == "github.com",
-              asset.browserDownloadURL.user == nil, asset.browserDownloadURL.password == nil,
-              asset.browserDownloadURL.port == nil,
-              asset.browserDownloadURL.path == "/Cupcc/codex-signal/releases/download/\(tagName)/\(name)",
-              let digest = asset.digest, digest.hasPrefix("sha256:") else { throw UpdateError.invalidRelease }
-        let hash = String(digest.dropFirst(7)).lowercased()
-        guard hash.count == 64, hash.allSatisfy({ $0.isASCII && $0.isHexDigit }) else { throw UpdateError.invalidRelease }
-        return UpdatePackage(version: version, url: asset.browserDownloadURL, sha256: hash)
+        let url = URL(string: "https://github.com/Cupcc/codex-signal/releases/download/v\(version)/CodexSignal-\(version)-arm64.zip")!
+        return UpdatePackage(version: version, url: url, sha256: sha256)
     }
 }
 
