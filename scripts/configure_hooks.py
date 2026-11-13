@@ -82,6 +82,22 @@ def merge_hooks(config, command, force=False, agent="codex"):
                 elif remaining:
                     kept.append(dict(group, hooks=remaining))
             events[name] = kept
+    # Drop this receiver from events a newer bridge no longer uses.
+    for name, groups in list(events.items()):
+        if name in spec["events"]:
+            continue
+        kept = []
+        for group in groups:
+            handlers = group.get("hooks", [])
+            remaining = [handler for handler in handlers if not is_signal_hook(handler, spec["sources"])]
+            if remaining == handlers:
+                kept.append(group)
+            elif remaining:
+                kept.append(dict(group, hooks=remaining))
+        if kept:
+            events[name] = kept
+        else:
+            del events[name]
     target = shlex.split(command)
     for name in spec["events"]:
         groups = []
@@ -103,7 +119,7 @@ def merge_hooks(config, command, force=False, agent="codex"):
                 updated.append(handler)
             groups.append(group if updated == handlers else dict(group, hooks=updated))
         if not found:
-            group = hook_group(name, command, agent == "claude")
+            group = hook_group(command)
             if agent == "codex":
                 # Claude Code would show this on its spinner for every tool call.
                 group["hooks"][0]["statusMessage"] = "Codex Signal"

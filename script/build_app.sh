@@ -3,12 +3,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 CONFIGURATION=debug
-UNIVERSAL=false
 while test "$#" -gt 0; do
   case "$1" in
     --release) CONFIGURATION=release ;;
-    --universal) UNIVERSAL=true ;;
-    *) echo "usage: $0 [--release] [--universal]" >&2; exit 2 ;;
+    *) echo "usage: $0 [--release]" >&2; exit 2 ;;
   esac
   shift
 done
@@ -20,25 +18,15 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$BUILD_NUMBER" =~ ^[1-9][0-9]
   exit 2
 fi
 
-if $UNIVERSAL; then
-  swift build -c "$CONFIGURATION" --triple arm64-apple-macosx14.0
-  ARM_BIN_DIR="$(swift build -c "$CONFIGURATION" --triple arm64-apple-macosx14.0 --show-bin-path)"
-  swift build -c "$CONFIGURATION" --triple x86_64-apple-macosx14.0
-  INTEL_BIN_DIR="$(swift build -c "$CONFIGURATION" --triple x86_64-apple-macosx14.0 --show-bin-path)"
-  BIN_DIR="$ARM_BIN_DIR"
-else
-  swift build -c "$CONFIGURATION"
-  BIN_DIR="$(swift build -c "$CONFIGURATION" --show-bin-path)"
-fi
+# Codex Signal supports Apple Silicon only.
+BUILD_ARGS=(-c "$CONFIGURATION" --triple arm64-apple-macosx14.0)
+swift build "${BUILD_ARGS[@]}"
+BIN_DIR="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)"
 
 APP="$ROOT_DIR/dist/CodexSignal.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Bridge"
-if $UNIVERSAL; then
-  lipo -create "$ARM_BIN_DIR/CodexSignal" "$INTEL_BIN_DIR/CodexSignal" -output "$APP/Contents/MacOS/CodexSignal"
-else
-  cp "$BIN_DIR/CodexSignal" "$APP/Contents/MacOS/CodexSignal"
-fi
+cp "$BIN_DIR/CodexSignal" "$APP/Contents/MacOS/CodexSignal"
 for RESOURCE in "$BIN_DIR"/*.bundle; do
   if test -d "$RESOURCE"; then
     ditto "$RESOURCE" "$APP/Contents/Resources/$(basename "$RESOURCE")"

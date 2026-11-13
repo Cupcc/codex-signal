@@ -41,7 +41,7 @@ struct UpdateRelease: Decodable {
         guard !draft, !prerelease else { return nil }
         guard let version = AppVersion(tagName) else { throw UpdateError.invalidRelease }
         guard version > current else { return nil }
-        let name = "CodexSignal-\(version)-universal.zip"
+        let name = "CodexSignal-\(version)-arm64.zip"
         guard let asset = assets.first(where: { $0.name == name }),
               asset.browserDownloadURL.scheme == "https",
               asset.browserDownloadURL.host == "github.com",

@@ -1,5 +1,14 @@
 # 更新记录
 
+## 0.7.1 · 2026-11-13
+
+Build 11，仅支持 Apple Silicon，修复 Claude Code 中断后的状态。
+
+- 只构建和发布 Apple Silicon（arm64）版本，不再包含 Intel；下载包改名为 `CodexSignal-<版本>-arm64.dmg` 与同名 ZIP。0.7.0 及更早版本无法自动更新到此版本，请手动下载一次。
+- 修复 Claude Code 中断后退出会话时，被中断的一轮一直显示运行中：`SessionEnd` 现在结束记录中的当前轮次，不再使用退出命令自带的标识。
+- slash 命令等未经提问 Hook 开始的 Claude Code 轮次，在首个工具或结束事件时显示为运行中。
+- 移除 Claude Code 的空闲通知 Hook：实测它只在正常结束后发出，无法收起中断的轮次。升级检查时移除 0.7.0 写入的对应接收器。
+
 ## 0.7.0 · 2026-11-13
 
 Build 10，新增 Claude Code 支持。

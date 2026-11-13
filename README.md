@@ -29,9 +29,9 @@ Codex Signal 是一个原生 macOS 会话提醒工具，支持 Codex 与 Claude 
 
 ## 安装
 
-需要 **macOS 14 或更新版本**。下载包为 Universal，包含 Apple Silicon 和 Intel 架构；本轮运行验证在 Apple Silicon 上完成。
+需要 **macOS 14 或更新版本**，仅支持 Apple Silicon（M 系列芯片）。Intel Mac 无法运行。
 
-1. 从 [Releases](https://github.com/Cupcc/codex-signal/releases/latest) 下载 DMG，打开后将 `CodexSignal.app` 拖入“应用程序”。也可下载 ZIP 后解压安装。
+1. 从 [Releases](https://github.com/Cupcc/codex-signal/releases/latest) 下载 `arm64` DMG，打开后将 `CodexSignal.app` 拖入“应用程序”。也可下载 ZIP 后解压安装。
 2. 打开应用，点击屏幕顶部的伙伴或菜单栏的 `◈ Signal` 展开列表。右键菜单栏可检查更新、手动下载或查看版本；退出应用请在设置中操作。
 3. 应用自动配置接入。在 Codex 的 Hooks 设置中审阅并信任后，开启新会话。只看效果可在终端运行：
 
@@ -71,9 +71,9 @@ Codex 要求首次审阅 Hooks：桌面端打开“设置 → Hooks”，CLI 运
 
 ### 当前接入边界
 
-CLI 的开始、结束、审批、提问、中断和等待解除已有本地真实接入记录。桌面端完整事件覆盖、所有终端组合与 Intel 实机运行尚未完成验证。无法唯一匹配的终端会话会显示反馈，不会随意打开同名标签页。
+CLI 的开始、结束、审批、提问、中断和等待解除已有本地真实接入记录。桌面端完整事件覆盖与所有终端组合尚未完成验证。无法唯一匹配的终端会话会显示反馈，不会随意打开同名标签页。
 
-内置桥不会从一次工具报错推断整轮失败；提问提醒取决于客户端是否发出相应 Hook。Claude Code 没有中断 Hook：按 Esc 中断或拒绝授权后，状态保持到 Claude Code 报告输入空闲（约 60 秒）、会话结束或下一次提问。详情见 [真实接入记录](specs/LIVE-VERIFICATION.md) 与 [CLI 来源和导航](specs/CLI-SOURCE-FIX.md)。
+内置桥不会从一次工具报错推断整轮失败；提问提醒取决于客户端是否发出相应 Hook。Claude Code 没有中断 Hook：按 Esc 中断或拒绝授权后，状态保持到下一次提问或退出会话。详情见 [真实接入记录](specs/LIVE-VERIFICATION.md) 与 [CLI 来源和导航](specs/CLI-SOURCE-FIX.md)。
 
 共享服务会话每 5 秒核对一次轮次状态，补回漏收的结束、中断或失败事件；修正不播报，也不会重新打开已关闭的提醒。独立 CLI 仍依赖 Hooks。范围与依据见 [运行状态修复记录](specs/RUNTIME-STATUS-FIX.md)。
 
@@ -112,20 +112,20 @@ python3 scripts/verify_runtime.py --check-speech
 
 ## 构建发布包
 
-版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.7.0（Build 10）**，“关于 Codex Signal”中可查看。
+版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.7.1（Build 11）**，“关于 Codex Signal”中可查看。
 
 ```sh
 ./script/release.sh
 ```
 
-自动更新读取 [GitHub Releases API](https://docs.github.com/en/rest/releases/releases#get-the-latest-release) 的最新正式版，要求 `vX.Y.Z` 标签、`CodexSignal-X.Y.Z-universal.zip` 资源及 GitHub 提供的 `sha256:` digest。缺少资源或摘要时保留手动下载入口；发布新版本必须递增 `VERSION`。下载后验证 SHA-256、应用标识、版本、最低系统版本和代码签名完整性；当前 ad-hoc 签名不代表 Apple 公证或独立的发布者身份认证。
+自动更新读取 [GitHub Releases API](https://docs.github.com/en/rest/releases/releases#get-the-latest-release) 的最新正式版，要求 `vX.Y.Z` 标签、`CodexSignal-X.Y.Z-arm64.zip` 资源及 GitHub 提供的 `sha256:` digest。缺少资源或摘要时保留手动下载入口；发布新版本必须递增 `VERSION`。下载后验证 SHA-256、应用标识、版本、最低系统版本和代码签名完整性；当前 ad-hoc 签名不代表 Apple 公证或独立的发布者身份认证。
 
-脚本分别编译 arm64 和 x86_64 的 Release 可执行文件，合并为 Universal 应用，打包资源、事件桥和第三方许可，完成 ad-hoc 签名与校验，生成：
+脚本只编译 arm64 的 Release 可执行文件，产物含其他架构时停止，再打包资源、事件桥和第三方许可，完成 ad-hoc 签名与校验，生成：
 
 ```text
 dist/releases/
-├── CodexSignal-0.6.0-universal.dmg
-├── CodexSignal-0.6.0-universal.zip
+├── CodexSignal-0.7.1-arm64.dmg
+├── CodexSignal-0.7.1-arm64.zip
 └── SHA256SUMS.txt
 ```
 

@@ -4,10 +4,15 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 if test "$#" -gt 0; then echo "usage: $0" >&2; exit 2; fi
 VERSION="$(tr -d '\r\n' < VERSION)"
-"$ROOT_DIR/script/build_app.sh" --release --universal
+"$ROOT_DIR/script/build_app.sh" --release
 APP="$ROOT_DIR/dist/CodexSignal.app"
+ARCHS="$(lipo -archs "$APP/Contents/MacOS/CodexSignal")"
+if test "$ARCHS" != arm64; then
+  echo "Release must contain only arm64, found: $ARCHS" >&2
+  exit 1
+fi
 RELEASE_DIR="$ROOT_DIR/dist/releases"
-NAME="CodexSignal-$VERSION-universal"
+NAME="CodexSignal-$VERSION-arm64"
 mkdir -p "$RELEASE_DIR"
 STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/codex-signal-release.XXXXXX")"
 trap 'rm -rf "$STAGING_DIR"' EXIT

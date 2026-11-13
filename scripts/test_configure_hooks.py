@@ -318,7 +318,7 @@ class ConfigureClaudeTests(unittest.TestCase):
         ours = {name: handlers for name, handlers in self.handlers().items() if handlers}
         self.assertEqual(set(ours), set(CLAUDE_HOOKS))
         self.assertTrue(all(len(handlers) == 1 and "statusMessage" not in handlers[0] for handlers in ours.values()))
-        self.assertEqual(merged["hooks"]["Notification"][-1]["matcher"], "idle_prompt")
+        self.assertNotIn("Notification", merged["hooks"])
         self.assertFalse((self.claude / "hooks.json").exists())
         self.assertFalse(configure(self.claude, self.data, agent="claude")["changed"])
 
@@ -328,9 +328,22 @@ class ConfigureClaudeTests(unittest.TestCase):
         payload = {"hook_event_name": "Stop", "session_id": "claude-session", "prompt_id": "prompt-1", "cwd": "/example/Atlas"}
         run = subprocess.run(command, shell=True, input=json.dumps(payload), text=True, capture_output=True, cwd=self.root, timeout=10)
         self.assertEqual((run.returncode, run.stdout), (0, ""), run.stderr)
-        event = json.loads(next((self.data / "inbox").glob("*.json")).read_text())
-        self.assertEqual((event["source"], event["sessionId"], event["turnId"], event["kind"]),
-                         ("claude", "claude-session", "prompt-1", "completed"))
+        events = [json.loads(path.read_text()) for path in (self.data / "inbox").glob("*.json")]
+        self.assertEqual({(event["source"], event["sessionId"], event["turnId"], event["kind"]) for event in events},
+                         {("claude", "claude-session", "prompt-1", "started"), ("claude", "claude-session", "prompt-1", "completed")})
+
+    def test_upgrade_removes_receiver_from_events_no_longer_used(self):
+        # 0.7.0 registered Notification with an idle_prompt matcher.
+        configure(self.claude, self.data, agent="claude")
+        settings = self.read()
+        command = self.handlers()["Stop"][0]["command"]
+        neighbor = {"type": "command", "command": "notify-send-like"}
+        settings["hooks"]["Notification"] = [{"matcher": "idle_prompt", "hooks": [{"type": "command", "command": command, "timeout": 3}]},
+                                             {"hooks": [neighbor, {"type": "command", "command": command, "timeout": 3}]}]
+        self.path.write_text(json.dumps(settings))
+        self.assertTrue(configure(self.claude, self.data, agent="claude")["changed"])
+        self.assertEqual(self.read()["hooks"]["Notification"], [{"hooks": [neighbor]}])
+        self.assertFalse(configure(self.claude, self.data, agent="claude")["changed"])
 
     def test_codex_and_claude_receivers_stay_separate(self):
         codex = self.root / "codex"

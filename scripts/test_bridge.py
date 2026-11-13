@@ -391,11 +391,11 @@ class BridgeTests(unittest.TestCase):
     def test_claude_permission_and_question_resolve_by_tool_call(self):
         bash = {"tool_name": "Bash", "tool_input": {"command": "rm -rf build", "description": "Clean"}}
         ask = {"tool_name": "AskUserQuestion", "tool_input": {"questions": [{"question": "Which layout?"}]}}
-        for name, extra in [("PreToolUse", dict(bash, tool_use_id="toolu_a")), ("PermissionRequest", bash),
+        for name, extra in [("UserPromptSubmit", {}), ("PreToolUse", dict(bash, tool_use_id="toolu_a")), ("PermissionRequest", bash),
                             ("PostToolUse", dict(bash, tool_use_id="toolu_a")), ("PreToolUse", dict(ask, tool_use_id="toolu_b")),
                             ("PermissionRequest", ask), ("PostToolUse", dict(ask, tool_use_id="toolu_b"))]:
             self.run_bridge(self.claude(name, **extra), source="claude")
-        events = self.claude_events()
+        events = self.claude_events()[1:]
         self.assertEqual([(event["kind"], event["requestId"]) for event in events],
                          [("approval", "tool:toolu_a"), ("resumed", "tool:toolu_a"), ("question", "tool:toolu_b"),
                           ("question", "tool:toolu_b"), ("resumed", "tool:toolu_b")])
@@ -403,15 +403,29 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(events[2]["eventId"], events[3]["eventId"])
         self.assertNotIn("rm -rf", json.dumps(events))
 
-    def test_claude_turn_endings_without_interrupt_hook(self):
-        cases = [("StopFailure", {"error": "rate_limit"}, "failed"), ("Notification", {"notification_type": "idle_prompt"}, "stopped"),
-                 ("SessionEnd", {"reason": "prompt_input_exit"}, "stopped")]
-        for index, (name, extra, _) in enumerate(cases):
-            self.run_bridge(self.claude(name, turn="p-" + str(index), **extra), source="claude")
-        self.assertEqual([event["kind"] for event in self.claude_events()], [kind for _, _, kind in cases])
+    def test_exit_ends_the_interrupted_turn_not_the_exit_command(self):
+        # Real Claude Code 2.1.323: Esc fires no hook; /exit sends SessionEnd with its own prompt_id.
+        self.run_bridge(self.claude("UserPromptSubmit"), source="claude")
+        self.run_bridge(self.claude("PreToolUse", tool_name="Bash", tool_use_id="toolu_a", tool_input={"command": "sleep 20"}), source="claude")
+        self.run_bridge(self.claude("Notification", notification_type="idle_prompt"), source="claude")
+        self.run_bridge(self.claude("SessionEnd", turn="p-exit", reason="prompt_input_exit"), source="claude")
+        self.assertEqual([(event["kind"], event["turnId"]) for event in self.claude_events()], [("started", "p-1"), ("stopped", "p-1")])
+        # The session's turn record ends with it; a later exit without prompts writes nothing.
         result = self.run_bridge(self.claude("SessionEnd", turn=None, reason="other"), source="claude")
         self.assertEqual((result.returncode, result.stderr), (0, ""))
-        self.assertEqual(len(self.events()), 3)
+        self.assertEqual(len(self.events()), 2)
+
+    def test_work_on_an_unseen_prompt_starts_its_turn(self):
+        # Slash commands can start work without UserPromptSubmit.
+        self.run_bridge(self.claude("UserPromptSubmit"), source="claude")
+        self.run_bridge(self.claude("Stop"), source="claude")
+        for name, extra in [("PreToolUse", {"tool_name": "Read", "tool_use_id": "toolu_r", "tool_input": {"file_path": "/x"}}),
+                            ("PostToolUse", {"tool_name": "Read", "tool_use_id": "toolu_r", "tool_input": {"file_path": "/x"}}),
+                            ("StopFailure", {"error": "rate_limit"})]:
+            self.run_bridge(self.claude(name, turn="p-command", **extra), source="claude")
+        self.assertEqual([(event["kind"], event["turnId"]) for event in self.claude_events()],
+                         [("started", "p-1"), ("completed", "p-1"), ("started", "p-command"),
+                          ("resumed", "p-command"), ("failed", "p-command")])
 
     def test_claude_never_reads_codex_titles(self):
         (self.fake_home / ".codex" / "session_index.jsonl").write_text(
@@ -442,7 +456,7 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         hooks = json.loads(result.stdout)["hooks"]
         self.assertEqual(set(hooks), set(CLAUDE_HOOKS))
-        self.assertEqual(hooks["Notification"][0]["matcher"], "idle_prompt")
+        self.assertNotIn("Notification", hooks)
         self.assertTrue(all("--source claude" in groups[0]["hooks"][0]["command"] for groups in hooks.values()))
 
 if __name__ == "__main__":

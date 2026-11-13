@@ -5,7 +5,7 @@
 - `VERSION`：三段式版本号，如 `0.1.0`，写入 `CFBundleShortVersionString`。
 - `BUILD_NUMBER`：递增正整数，如 `1`，写入 `CFBundleVersion`。
 - Git 标签：`v` 加 `VERSION`，如 `v0.1.0`。
-- 发布资产：`CodexSignal-<VERSION>-universal.dmg`、同名 ZIP 和 `SHA256SUMS.txt`。
+- 发布资产：`CodexSignal-<VERSION>-arm64.dmg`、同名 ZIP 和 `SHA256SUMS.txt`。仅支持 Apple Silicon，不发布 x86_64。
 
 每次发布前更新版本文件、README 版本入口与 CHANGELOG，并提交所有源码及发布脚本变更。即使只修复同一版本的构建，也应递增 Build；已发布的版本使用新版本号和标签。
 
@@ -29,6 +29,7 @@ Swift 可按套件或用例筛选，筛选模式只运行匹配的 Swift 测试�
 | 窗口、浮层或布局 | `IslandPanelTests`、`IslandLayoutTests` 的相关用例；过程检查见 [排查手册](playbooks/README.md) |
 | 伙伴素材、动画或语音 | 对应的 `MascotAnimationTests`、`VoicePolicyTests` 用例 |
 | Hooks 配置、桥接或请求关联 | `python3 scripts/test_configure_hooks.py`、`python3 scripts/test_bridge.py`、`python3 scripts/test_correlation.py` 中受影响的测试文件；接入生命周期变更加相关 `CodexConnectionTests` 用例 |
+| Claude Code 接入、映射、导航或语音 | `python3 scripts/test_configure_hooks.py -k Claude`、`python3 scripts/test_bridge.py -k claude`；Swift 用 `./script/test.sh --filter 'claude'` 运行 Claude Code 相关用例，共用逻辑变更时再加上面对应行 |
 | 自动更新 | 相关 `UpdateTests` 用例；安装器变更运行 `python3 scripts/test_update_installer.py` |
 
 仅在用户明确要求，或跨模块改动无法确定影响范围时运行全量 `./script/test.sh`，并说明原因。记录本次选择的测试、结果和未验证项。
@@ -41,7 +42,7 @@ lipo -archs dist/CodexSignal.app/Contents/MacOS/CodexSignal
 codesign --verify --deep --strict dist/CodexSignal.app
 ```
 
-发布脚本需要 macOS 工具链，分别构建 arm64 与 x86_64。运行验证只证明当前主机上的应用行为；跨架构编译不等于另一架构的实机验证。
+发布脚本需要 macOS 工具链，只构建 arm64；`lipo -archs` 必须只输出 `arm64`，否则脚本停止。
 
 另需将 ZIP 解压到临时目录验证其签名和启动，并挂载 DMG 检查应用和“应用程序”快捷方式。对外发布的文件必须来自最终提交中的源码。
 
@@ -60,8 +61,8 @@ git push origin main
 git tag -a "v$(cat VERSION)" -m "Codex Signal $(cat VERSION)"
 git push origin "v$(cat VERSION)"
 gh release create "v$(cat VERSION)" \
-  dist/releases/"CodexSignal-$(cat VERSION)-universal.dmg" \
-  dist/releases/"CodexSignal-$(cat VERSION)-universal.zip" \
+  dist/releases/"CodexSignal-$(cat VERSION)-arm64.dmg" \
+  dist/releases/"CodexSignal-$(cat VERSION)-arm64.zip" \
   dist/releases/SHA256SUMS.txt \
   --verify-tag --title "Codex Signal $(cat VERSION)" \
   --notes-file docs/releases/"v$(cat VERSION).md"

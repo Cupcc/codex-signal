@@ -90,6 +90,41 @@ def _auto_owner(connection, data_dir, session, turn):
     return source
 
 
+CLAUDE_WORK = {"PreToolUse", "PermissionRequest", "PostToolUse", "Stop", "StopFailure"}
+
+
+def track_claude_turn(raw, data_dir):
+    """Return the turn for a Claude Code hook and whether that turn began without UserPromptSubmit.
+
+    Claude Code names a turn only by prompt_id. Slash commands can start work without
+    UserPromptSubmit, and SessionEnd carries the exit command's own prompt_id, so it
+    must end the last tracked turn instead."""
+    name, session, prompt = raw.get("hook_event_name"), raw.get("session_id"), raw.get("prompt_id")
+    prompt = prompt if _identifier(prompt) else None
+    if not _identifier(session):
+        return prompt, False
+    connection = None
+    try:
+        connection = _connect(Path(data_dir))
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("CREATE TABLE IF NOT EXISTS claude_turns (session_id TEXT PRIMARY KEY, turn_id TEXT NOT NULL)")
+            row = connection.execute("SELECT turn_id FROM claude_turns WHERE session_id = ?", (session,)).fetchone()
+            current = row[0] if row else None
+            if name == "SessionEnd":
+                connection.execute("DELETE FROM claude_turns WHERE session_id = ?", (session,))
+                return current or prompt, False
+            if prompt is None or prompt == current or (name != "UserPromptSubmit" and name not in CLAUDE_WORK):
+                return prompt, False
+            connection.execute("INSERT OR REPLACE INTO claude_turns VALUES (?, ?)", (session, prompt))
+            return prompt, name != "UserPromptSubmit"
+    except (OSError, ValueError, sqlite3.Error):
+        return prompt, False
+    finally:
+        if connection is not None:
+            connection.close()
+
+
 def enrich_hook(raw, source, data_dir):
     result = dict(raw)
     name = raw.get("hook_event_name")

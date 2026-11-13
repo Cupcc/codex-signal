@@ -6,8 +6,8 @@ struct UpdateTests {
     private func release(version: String = "v0.3.0", digest: String? = "sha256:" + String(repeating: "a", count: 64),
                          host: String = "github.com", prerelease: Bool = false) throws -> UpdateRelease {
         let asset: [String: Any] = [
-            "name": "CodexSignal-0.3.0-universal.zip",
-            "browser_download_url": "https://\(host)/Cupcc/codex-signal/releases/download/\(version)/CodexSignal-0.3.0-universal.zip",
+            "name": "CodexSignal-0.3.0-arm64.zip",
+            "browser_download_url": "https://\(host)/Cupcc/codex-signal/releases/download/\(version)/CodexSignal-0.3.0-arm64.zip",
             "digest": digest as Any? ?? NSNull()
         ]
         let data = try JSONSerialization.data(withJSONObject: ["tag_name": version, "draft": false, "prerelease": prerelease, "assets": [asset]])

@@ -24,9 +24,9 @@
 
 安装后的首次启动同时检查 Claude Code。配置目录为 `~/.claude`，设置了 `CLAUDE_CONFIG_DIR` 时使用该目录。目录不存在时不创建，记录为“未检测到”，等待用户点击“一键配置”。检查结果单独记录在数据目录的 `claude-connection.json`。
 
-配置器将八项 Hooks 合并进 `settings.json`：`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`PostToolUse`、`Stop`、`StopFailure`、`Notification`（仅 `idle_prompt`）和 `SessionEnd`。接收命令使用 `--source claude`，不写 `statusMessage`，避免每次工具调用都显示在 Claude Code 的进度提示中。版本核对、缺项补齐、强制重配、备份和符号链接拒绝与 Codex 相同；`model`、`permissions`、`env`、`statusLine` 等其他设置原样保留。Claude Code 通过文件监视自动载入 Hooks，不需要审阅。开发配置器对应参数为 `--agent claude --config-home <目录>`。
+配置器将七项 Hooks 合并进 `settings.json`：`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`PostToolUse`、`Stop`、`StopFailure` 和 `SessionEnd`。0.7.0 注册在 `Notification` 上的接收器在升级检查时移除，同组其他处理器保留。接收命令使用 `--source claude`，不写 `statusMessage`，避免每次工具调用都显示在 Claude Code 的进度提示中。版本核对、缺项补齐、强制重配、备份和符号链接拒绝与 Codex 相同；`model`、`permissions`、`env`、`statusLine` 等其他设置原样保留。Claude Code 通过文件监视自动载入 Hooks，不需要审阅。开发配置器对应参数为 `--agent claude --config-home <目录>`。
 
-Claude Code 没有轮次标识，桥使用每次提问的 `prompt_id` 作为 turnId。首次提问前的事件（如 `SessionStart`）没有 `prompt_id`，不写事件。
+Claude Code 没有轮次标识，桥使用每次提问的 `prompt_id` 作为 turnId，并在关联数据库中记录每个会话的当前轮次。slash 命令等未经 `UserPromptSubmit` 的新 `prompt_id`，在其首个工具或结束事件前补写 started。首次提问前的事件（如 `SessionStart`）没有 `prompt_id`，不写事件。
 
 | Hook | 状态 |
 | --- | --- |
@@ -36,13 +36,13 @@ Claude Code 没有轮次标识，桥使用每次提问的 `prompt_id` 作为 tur
 | `PostToolUse` | resumed；提问工具在用户回答后才返回 |
 | `Stop` | completed |
 | `StopFailure` | failed，仅表示本轮因 API 错误结束 |
-| `Notification` 的 `idle_prompt`、`SessionEnd` | stopped；本轮已结束时忽略 |
+| `SessionEnd` | 记录中的当前轮次 stopped；本轮已结束时忽略。`/exit` 的 SessionEnd 自带一个新的 `prompt_id`，不使用 |
 
-Claude Code 不为 Esc 中断或手动拒绝授权触发 Hook。此时会话保持运行中或待确认，直到 Claude Code 报告输入空闲（约 60 秒）、会话结束或下一次提问。`idle_prompt` 和 `SessionEnd` 是客户端给出的空闲或结束信号，不是根据静默时长推断。子代理的工具事件属于同一会话和轮次；`SubagentStop` 不注册。
+Claude Code 不为 Esc 中断或手动拒绝授权触发任何 Hook；空闲通知 `idle_prompt` 只在正常结束的一轮后发出，不注册。因此中断后会话保持运行中或待确认，直到下一次提问或退出会话。不根据静默时长推断。子代理的工具事件属于同一会话和轮次；`SubagentStop` 不注册。
 
 终端标识取自最近的 `claude` 祖先进程（npm 安装时为运行 Claude Code 的 node 进程）的 TTY，以及其所在终端应用。IDE 插件或无终端运行没有 TTY，打开会话时直接在首选终端新标签页填入 `cd -- <目录> && claude --resume <会话>`。Claude Code 的标签页标题来自对话内容，不做标题匹配。标题只使用 Hook 提供的自定义标题，不读取 `transcript_path` 指向的对话记录。
 
-真实接入记录：Claude Code 2.1.323 的非交互运行（`claude -p`）确认了 `UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop`、`SessionEnd` 的字段与上表映射一致。交互会话中的授权、提问、`idle_prompt` 和标签页定位尚待实机记录。
+真实接入记录（Claude Code 2.1.323，伪终端驱动的交互会话）：授权按 `PreToolUse` 关联到 tool_use_id；`AskUserQuestion` 的 `PreToolUse` 与 `PermissionRequest` 合并为同一请求，回答后由 `PostToolUse` 解除；Esc 拒绝授权和中断运行中的工具都不触发 Hook；失焦后 `idle_prompt` 只在正常结束约 60 秒后出现；`/exit` 的 `SessionEnd` 将被中断的一轮收为已停止。事件携带会话 TTY 与终端应用标识。真实终端中的标签页定位尚待实机记录。
 
 ## 先验证隔离回放
 

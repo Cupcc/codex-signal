@@ -18,7 +18,7 @@ import uuid
 
 # The bridge can run from a signed app bundle; keep imports read-only.
 sys.dont_write_bytecode = True
-from request_correlation import enrich_hook
+from request_correlation import enrich_hook, track_claude_turn
 
 MAX_INPUT = 1024 * 1024
 MAX_EVENT = 64 * 1024
@@ -26,10 +26,9 @@ SOURCES = {"cli", "desktop", "unknown", "claude"}
 KINDS = {"started", "approval", "question", "resumed", "completed", "failed", "stopped", "disconnected"}
 FIELDS = {"schemaVersion", "eventId", "source", "sessionId", "turnId", "requestId", "project", "kind", "occurredAt", "isChild", "title", "cwd", "terminalTTY", "terminalBundleID"}
 HOOKS = ("UserPromptSubmit", "PermissionRequest", "PreToolUse", "PostToolUse", "Stop", "Interrupt")
-# Claude Code has no interrupt hook. An idle prompt or a session end is its only evidence
-# that an unfinished turn stopped; Notification otherwise fires for unrelated UI messages.
-CLAUDE_HOOKS = ("UserPromptSubmit", "PreToolUse", "PermissionRequest", "PostToolUse", "Stop", "StopFailure", "Notification", "SessionEnd")
-CLAUDE_MATCHERS = {"Notification": "idle_prompt"}
+# Claude Code has no interrupt hook; only SessionEnd ends an interrupted turn. Its idle
+# notification follows completed turns only, so it adds nothing.
+CLAUDE_HOOKS = ("UserPromptSubmit", "PreToolUse", "PermissionRequest", "PostToolUse", "Stop", "StopFailure", "SessionEnd")
 DEFAULT_DATA_DIR = Path.home() / "Library" / "Application Support" / "Codex Signal"
 
 
@@ -333,12 +332,13 @@ def record_diagnostic(raw, event, data_dir, source, error=None):
         os.close(fd)
 
 
-def claude_turn(raw):
+def claude_turn(raw, data_dir):
     """Claude Code identifies a turn by its prompt; there is none before the first prompt."""
+    turn, implicit_start = track_claude_turn(raw, data_dir)
     result = {key: value for key, value in raw.items() if key != "turn_id"}
-    if raw.get("prompt_id") is not None:
-        result["turn_id"] = raw["prompt_id"]
-    return result
+    if turn is not None:
+        result["turn_id"] = turn
+    return result, implicit_start
 
 
 def codex_kind(raw):
@@ -364,8 +364,6 @@ def claude_kind(raw):
     if name == "PostToolUse":
         # The question tool returns only after the user answers.
         return "resumed" if raw.get("tool_use_id") else None
-    if name == "Notification":
-        return "stopped" if raw.get("notification_type") == "idle_prompt" else None
     return {"UserPromptSubmit": "started", "PermissionRequest": "approval", "Stop": "completed",
             "StopFailure": "failed", "SessionEnd": "stopped"}.get(name)
 
@@ -469,14 +467,11 @@ def hooks_config(source, data_dir):
     if source not in SOURCES | {"auto"}:
         raise ValueError("--source is required for --print-hooks")
     command = shlex.join([sys.executable, str(Path(__file__).resolve()), "--input", "hook", "--source", source, "--data-dir", str(data_dir.absolute())])
-    return {"hooks": {name: [hook_group(name, command, source == "claude")] for name in (CLAUDE_HOOKS if source == "claude" else HOOKS)}}
+    return {"hooks": {name: [hook_group(command)] for name in (CLAUDE_HOOKS if source == "claude" else HOOKS)}}
 
 
-def hook_group(name, command, claude=False):
-    group = {"hooks": [{"type": "command", "command": command, "timeout": 3}]}
-    if claude and name in CLAUDE_MATCHERS:
-        group = {"matcher": CLAUDE_MATCHERS[name], **group}
-    return group
+def hook_group(command):
+    return {"hooks": [{"type": "command", "command": command, "timeout": 3}]}
 
 
 def main():
@@ -505,8 +500,9 @@ def main():
         if len(data) > MAX_INPUT:
             raise ValueError("input exceeds 1 MiB")
         raw = json.loads(data, parse_constant=lambda _: (_ for _ in ()).throw(ValueError("non-finite JSON number")))
+        implicit_start = False
         if args.input == "hook" and source == "claude" and isinstance(raw, dict):
-            raw = claude_turn(raw)
+            raw, implicit_start = claude_turn(raw, args.data_dir.expanduser())
         correlation_source = source
         if source == "auto":
             try:
@@ -516,6 +512,10 @@ def main():
             source = resolve_source(process_source, raw)
         enriched = enrich_hook(raw, correlation_source, args.data_dir.expanduser()) if args.input == "hook" and isinstance(raw, dict) else raw
         event = normalize(enriched, args.input, source)
+        if implicit_start:
+            # Work on a prompt that never passed UserPromptSubmit, such as a slash command.
+            started = normalize(dict(raw, hook_event_name="UserPromptSubmit"), "hook", source)
+            write_event(enrich_metadata(started, raw), args.data_dir.expanduser())
         if event is not None:
             if args.input != "event":
                 event = enrich_metadata(event, raw)
