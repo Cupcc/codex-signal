@@ -21,9 +21,9 @@
     if(button.getAttribute('aria-pressed')==='true')return;
     main().forEach(svg=>api.setState(svg,state));
     choices.forEach(b=>b.setAttribute('aria-pressed',String(b===button)));
-    document.querySelector('.session p').textContent=tasks[state];
-    document.querySelector('.session b').textContent=labels[state];
-    document.querySelector('.session b').style.color={idle:'#adc0d5',working:'#9dceff',attention:'#ffcd92',question:'#c3e2ff',error:'#ffada6',ready:'#c5b8ff'}[state];
+    document.querySelectorAll('.session p').forEach(p=>p.textContent=tasks[state]);
+    document.querySelectorAll('.session b').forEach(b=>{b.textContent=labels[state];
+      b.style.color={idle:'#adc0d5',working:'#9dceff',attention:'#ffcd92',question:'#c3e2ff',error:'#ffada6',ready:'#c5b8ff'}[state];});
     document.querySelector('#motion-state').textContent='当前：'+labels[state];
   }));
   document.querySelector('#motion-replay').addEventListener('click',()=>{

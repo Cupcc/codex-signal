@@ -6,6 +6,7 @@ import SwiftUI
 /// repeatedly decoding PNGs or invalidating the surrounding SwiftUI session list.
 struct AnimatedMascot: NSViewRepresentable {
     var state: String
+    var skin: MascotSkin
     var mini: Bool
     var active: Bool
     var reduced: Bool
@@ -13,7 +14,7 @@ struct AnimatedMascot: NSViewRepresentable {
     func makeNSView(context: Context) -> MascotAnimationView { MascotAnimationView() }
 
     func updateNSView(_ view: MascotAnimationView, context: Context) {
-        view.configure(state: state, mini: mini, active: active, reduced: reduced)
+        view.configure(state: state, skin: skin, mini: mini, active: active, reduced: reduced)
     }
 
     static func dismantleNSView(_ view: MascotAnimationView, coordinator: ()) {
@@ -35,6 +36,7 @@ final class MascotAnimationView: NSView {
     private(set) var parts: [String: CALayer] = [:]
     private var artwork: String?
     private var state = "idle"
+    private var skin = MascotSkin.companion
     private var active = false
     private var reduced = false
     private var suspended = false
@@ -117,13 +119,14 @@ final class MascotAnimationView: NSView {
         syncPlayback()
     }
 
-    func configure(state: String, mini: Bool, active: Bool, reduced: Bool) {
+    func configure(state: String, skin: MascotSkin = .companion, mini: Bool, active: Bool, reduced: Bool) {
         self.active = active
-        let key = "\(mini ? "mini-" : "")\(state)"
+        let key = "\(skin.layerPrefix)\(mini ? "mini-" : "")\(state)"
         let reduce = reduced || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         if artwork != key {
             artwork = key
             self.state = state
+            self.skin = skin
             self.reduced = reduce
             rebuild(key: key, mini: mini)
             if !reduce { animate() }
@@ -169,13 +172,25 @@ final class MascotAnimationView: NSView {
         bodyArt.frame = body.bounds
         bodyArt.contents = Self.image(named: "\(key)-body")
         body.addSublayer(bodyArt)
-        _ = node("eyes", parent: body, pivot: CGPoint(x: 63, y: state == "working" ? (mini ? 72 : 71.5) : 62))
+        _ = node("eyes", parent: body, pivot: eyePivot(mini: mini))
         if state == "idle" { node("open", parent: body).opacity = 0 }
         _ = node("left", parent: character, pivot: CGPoint(x: state == "working" ? 41 : 24, y: 84))
         _ = node("right", parent: character, pivot: CGPoint(x: state == "working" ? 86 : 105,
                                                           y: ["attention", "question"].contains(state) ? 62 : 84))
         _ = node("badge", parent: canvas, pivot: CGPoint(x: mini ? 104.5 : 108, y: mini ? 20.4 : 17))
         CATransaction.commit()
+    }
+
+    /// Blinks scale the pupils around their own centre: the companion's visor
+    /// eyes, or the pupils inside the crab's eye bulbs (build_toys.py CRAB_EYE_Y).
+    private func eyePivot(mini: Bool) -> CGPoint {
+        // Mini artwork scales the body by 1.11 and shifts it by −7 points.
+        let working = state == "working"
+        let y: CGFloat = switch skin {
+        case .companion: working ? (mini ? 72 : 71.5) : 62
+        case .crab: working ? (mini ? 26.9 : 30.5) : (mini ? 23 : 27)
+        }
+        return CGPoint(x: 63, y: y)
     }
 
     private static func image(named name: String) -> CGImage? {

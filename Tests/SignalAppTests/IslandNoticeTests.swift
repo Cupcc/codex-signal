@@ -6,8 +6,9 @@ import SignalCore
 @MainActor
 struct IslandNoticeTests {
     private func event(_ kind: EventKind, session: String = "main", turn: String = "turn", request: String? = nil,
-                       time: Double = Date().timeIntervalSince1970, child: Bool = false) -> SignalEvent {
-        SignalEvent(eventId: UUID().uuidString, source: .cli, sessionId: session, turnId: turn,
+                       time: Double = Date().timeIntervalSince1970, child: Bool = false,
+                       source: SessionSource = .cli) -> SignalEvent {
+        SignalEvent(eventId: UUID().uuidString, source: source, sessionId: session, turnId: turn,
                     requestId: request, project: "项目", kind: kind, occurredAt: time, isChild: child)
     }
 
@@ -79,6 +80,22 @@ struct IslandNoticeTests {
         #expect(model.readyCount == 1)
         model.dismissReminder("cli:main")
         #expect(model.readyCount == 0)
+    }
+
+    @Test func collapsedCharacterFollowsTheSessionsBehindItsState() throws {
+        let model = makeModel()
+        defer { try? FileManager.default.removeItem(at: model.dataDirectory) }
+        #expect(model.aggregateSkin == .companion)
+        try send([event(.started, session: "crab", source: .claude)], to: model)
+        #expect(model.aggregateSkin == .crab)
+        // Mixed running work keeps one steady character.
+        try send([event(.started)], to: model)
+        #expect(model.aggregateSkin == .companion)
+        try send([event(.approval, session: "crab", request: "permission", source: .claude)], to: model)
+        #expect(model.aggregatePhase == .approval)
+        #expect(model.aggregateSkin == .crab)
+        try send([event(.resumed, session: "crab", request: "permission", source: .claude)], to: model)
+        #expect(model.aggregateSkin == .companion)
     }
 
     @Test func oldCompletionCannotPutRunningMascotToSleep() throws {

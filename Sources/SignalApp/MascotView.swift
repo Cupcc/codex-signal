@@ -39,16 +39,27 @@ struct PhaseAppearance {
     }
 }
 
+/// Codex sessions use the blue companion; Claude Code sessions use the orange crab.
+enum MascotSkin: Equatable {
+    case companion, crab
+
+    init(_ source: SessionSource?) { self = source == .claude ? .crab : .companion }
+
+    /// Layer file prefix; the companion keeps its original unprefixed names.
+    var layerPrefix: String { self == .crab ? "crab-" : "" }
+}
+
 struct MascotView: View {
     var phase: SessionPhase?
     var seen = false
+    var skin: MascotSkin = .companion
     var size: CGFloat = 56
     var motionActive = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var visible = false
 
     var body: some View {
-        AnimatedMascot(state: PhaseAppearance(phase, seen: seen).asset, mini: size <= 28,
+        AnimatedMascot(state: PhaseAppearance(phase, seen: seen).asset, skin: skin, mini: size <= 28,
                        active: motionActive && visible, reduced: reduceMotion)
         .frame(width: size, height: size)
         .onAppear { visible = true }

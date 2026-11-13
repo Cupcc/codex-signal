@@ -10,14 +10,14 @@
 {"schemaVersion":1,"eventId":"unique-id","source":"cli","sessionId":"session-a","turnId":"turn-1","requestId":null,"project":"API 服务","kind":"approval","occurredAt":1794200000.0,"isChild":false}
 ```
 
-source 为 cli、desktop 或 unknown。unknown 表示收到真实 Codex 事件，但共享服务使原始客户端无法判定。kind 为 started、approval、question、resumed、completed、failed、stopped、disconnected。occurredAt 为 Unix 秒。eventId、sessionId、turnId、project 非空且有限长，禁止 NaN 和无穷日期。未知枚举或 schema 拒绝。eventId 去重与语义去重共用状态写入结果。正文不进入标准事件。
+source 为 cli、desktop、unknown 或 claude。unknown 表示收到真实 Codex 事件，但共享服务使原始客户端无法判定；claude 自 0.7.0 起表示 Claude Code 会话。kind 为 started、approval、question、resumed、completed、failed、stopped、disconnected。occurredAt 为 Unix 秒。eventId、sessionId、turnId、project 非空且有限长，禁止 NaN 和无穷日期。未知枚举或 schema 拒绝。eventId 去重与语义去重共用状态写入结果。正文不进入标准事件。
 
 ## SignalCore
 
 Sources/SignalCore 由核心代理独占。Tests/SignalCoreTests 同属核心代理。
 
 ```swift
-public enum SessionSource: String, Codable, Sendable { case cli, desktop, unknown }
+public enum SessionSource: String, Codable, Sendable { case cli, desktop, unknown, claude }
 public enum EventKind: String, Codable, Sendable { case started, approval, question, resumed, completed, failed, stopped, disconnected }
 public enum SessionPhase: String, Codable, Sendable { case running, approval, question, completed, failed, stopped, disconnected }
 public struct SignalEvent: Codable, Sendable { /* JSON 字段，与上述完全一致 */ }
@@ -105,3 +105,13 @@ schemaVersion 仍为 1，事件和会话增加可选 `title`（1024 UTF-8 字节
 标题索引每5秒检查文件指纹，仅变化或会话集合变化时后台读取，最多尾部8 MiB；I/O失败下次重试。SQLite补标题只在桥接收到事件时按精确ID只读查询。显示标题可以更新，不作为排序或路由标识。
 
 导航只用 UUID 或 TTY，不使用项目名/窗口标题模糊匹配。`SessionNavigator.plan` 提供真实动作标题、图标与说明；运行中拒绝重复导航。恢复命令只复制，不自动执行。演示模式不打开真实应用。
+
+## 0.7.0 增量契约：Claude Code
+
+schemaVersion 仍为 1，标准事件字段不变。`SessionSource` 增加 `claude`，并提供 `isCodex`（除 claude 外均为 Codex）与 `isTerminalClient`（cli 与 claude，可在终端标签页恢复）。旧 state.json 无需迁移；新版写入的 claude 会话无法被旧版解码。
+
+桥的 `--source` 取值为 auto、cli、desktop、unknown、claude。Claude Code 接收器固定使用 `--source claude`，不做进程来源推断；Hook 输入以 `prompt_id` 替换 turn_id，缺少时不写事件。`--print-hooks --source claude` 只输出 Claude Code 的七项 Hooks。
+
+`configure_hooks.py --agent codex|claude --config-home <目录>` 分别写入 `hooks.json` 或 `settings.json`；`--codex-home` 保留为别名。两种接收器按 `--source` 区分，强制重配只重建对应代理的条目。应用为每个代理单独保存接入记录（`codex-connection.json`、`claude-connection.json`），状态快照增加 `claudeConnectionStatus` 与 `claudeConnectionHooksPath`。`--data-dir` 运行只有同时传入 `--codex-home` 或 `--claude-home` 时才配置对应代理。
+
+`SessionNavigator.plan` 对 claude 会话：有可脚本化终端与 TTY 时返回原标签页，否则返回 `recover`，在新标签页填入 `claude --resume <会话>`；不使用标题匹配。`VoicePolicy.clip` 对 claude 来源返回 `claude-*` 音频，子任务结束仍静音。配置样例见 [examples/claude-settings.json](examples/claude-settings.json)。

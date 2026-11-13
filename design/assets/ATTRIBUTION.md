@@ -12,6 +12,12 @@
 
 参考既有圆润 icon toy 的亲和感，没有复制 Coucou、CodeIsland 或 OpenAI 的角色图片与造型代码。正式画面均使用此组原创资产；静态SVG保留为回退资产，HTML通过 `mascot-art.js` 与 `mascot-motion.js` 增强为五态动效；绘图与动画均为本项目原创。
 
+## Claude Code 橙色小螃蟹
+
+`crab-*.svg` 与 `crab-mini-*.svg` 为本项目原创的橙色小螃蟹「钳钳」，用于 Claude Code 会话。按用户要求使用专属橙色与螃蟹造型：圆壳、眼柄、一对钳子与六条短腿，配奶油色腹部与深棕色眼睛，不使用蓝色。由 [build_toys.py](build_toys.py) 以纯矢量路径绘制，与蓝色伙伴共用状态角标和姿态语义。
+
+螃蟹是通用动物形象。没有复制 Anthropic 或 Claude Code 的标志、吉祥物、像素图或其他第三方角色图片，也不表示得到 Anthropic 的背书。
+
 ## 可选经典皮肤参考
 
 本目录的 `dex-working.svg`、`dex-attention.svg`、`dex-idle.svg` 从 [CodeIsland 的 DexView.swift](https://github.com/wxtsky/CodeIsland/blob/main/Sources/CodeIsland/DexView.swift) 的像素矩形坐标和色板转写为静态 SVG，供本项目设计稿使用。

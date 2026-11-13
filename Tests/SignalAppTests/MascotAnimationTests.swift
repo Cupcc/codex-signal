@@ -1,5 +1,6 @@
 import AppKit
 import QuartzCore
+import SignalCore
 import Testing
 @testable import SignalApp
 
@@ -25,20 +26,35 @@ struct MascotAnimationTests {
         #expect(abs(view.canvas.convertTime(CACurrentMediaTime(), from: nil) - pausedTime) < 0.1)
     }
 
-    @Test func everyPoseAndSizeLoadsCompleteLayeredArtwork() throws {
+    @Test(arguments: [MascotSkin.companion, .crab])
+    func everyPoseAndSizeLoadsCompleteLayeredArtwork(skin: MascotSkin) throws {
         for mini in [false, true] {
             for state in ["working", "idle", "attention", "question", "error", "ready"] {
                 let view = MascotAnimationView()
                 defer { view.stopObserving() }
-                view.configure(state: state, mini: mini, active: true, reduced: true)
+                view.configure(state: state, skin: skin, mini: mini, active: true, reduced: true)
                 for part in ["ground", "eyes", "left", "right", "badge"] {
-                    #expect(view.parts[part]?.contents != nil, "Missing \(state) / \(mini) / \(part)")
+                    #expect(view.parts[part]?.contents != nil, "Missing \(skin) / \(state) / \(mini) / \(part)")
                 }
                 #expect(view.parts["body"]?.sublayers?.first?.contents != nil)
                 if state == "idle" { #expect(view.parts["open"]?.contents != nil) }
                 #expect(view.parts.values.allSatisfy { ($0.animationKeys() ?? []).isEmpty })
             }
         }
+    }
+
+    @Test func claudeCodeSessionsUseTheCrab() {
+        #expect(MascotSkin(.claude) == .crab)
+        for source in [SessionSource.cli, .desktop, .unknown, nil] { #expect(MascotSkin(source) == .companion) }
+        let companion = MascotAnimationView(), crab = MascotAnimationView()
+        defer { companion.stopObserving(); crab.stopObserving() }
+        companion.configure(state: "attention", mini: false, active: true, reduced: true)
+        crab.configure(state: "attention", skin: .crab, mini: false, active: true, reduced: true)
+        let lhs = companion.parts["right"]?.contents as AnyObject?, rhs = crab.parts["right"]?.contents as AnyObject?
+        #expect(lhs != nil && rhs != nil && lhs !== rhs)
+        // Switching skin with the same pose rebuilds the artwork.
+        crab.configure(state: "attention", skin: .companion, mini: false, active: true, reduced: true)
+        #expect(crab.parts["right"]?.contents as AnyObject? === lhs)
     }
 
     @Test func stateChangesReplaceLoopsAndDoNotReplayOnOrdinaryUpdates() throws {

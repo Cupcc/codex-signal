@@ -21,13 +21,17 @@ struct ExportMascotGIFs {
         let layers = Bundle.module.url(forResource: "working-body", withExtension: "png",
                                        subdirectory: "Resources/MascotLayers")!.deletingLastPathComponent()
         let files = try FileManager.default.contentsOfDirectory(atPath: layers.path)
-        let states = Set(files.filter { $0.hasSuffix("-body.png") && !$0.hasPrefix("mini-") }
-            .map { String($0.dropLast("-body.png".count)) })
-        guard states == Set(poses.map(\.asset)) else {
-            throw failure("Exported states do not cover the application's artwork: \(states.sorted())")
-        }
-        for mini in [false, true] {
-            try export(poses: poses, mini: mini, to: output)
+        for skin in [MascotSkin.companion, .crab] {
+            let prefix = skin.layerPrefix
+            let states = Set(files.filter { $0.hasSuffix("-body.png") && !$0.hasPrefix(prefix + "mini-")
+                    && (prefix.isEmpty ? !$0.hasPrefix("mini-") && !$0.hasPrefix("crab-") : $0.hasPrefix(prefix)) }
+                .map { String($0.dropFirst(prefix.count).dropLast("-body.png".count)) })
+            guard states == Set(poses.map(\.asset)) else {
+                throw failure("Exported \(prefix)states do not cover the application's artwork: \(states.sorted())")
+            }
+            for mini in [false, true] {
+                try export(poses: poses, skin: skin, mini: mini, to: output)
+            }
         }
         let obsolete = output.appendingPathComponent("mascot-five-states.gif")
         if FileManager.default.fileExists(atPath: obsolete.path) {
@@ -36,14 +40,15 @@ struct ExportMascotGIFs {
     }
 
     @MainActor
-    static func export(poses: [PhaseAppearance], mini: Bool, to output: URL) throws {
+    static func export(poses: [PhaseAppearance], skin: MascotSkin, mini: Bool, to output: URL) throws {
         let views = poses.map { pose in
             let view = MascotAnimationView()
-            view.configure(state: pose.asset, mini: mini, active: false, reduced: true)
+            view.configure(state: pose.asset, skin: skin, mini: mini, active: false, reduced: true)
             return view
         }
         defer { views.forEach { $0.stopObserving() } }
-        let prefix = mini ? "mascot-mini-" : "mascot-"
+        let variant = skin.layerPrefix + (mini ? "mini-" : "")
+        let prefix = "mascot-" + variant
         let names = poses.map { "\(prefix)\($0.asset).gif" } + ["\(prefix)six-states.gif"]
         let tracks = poses.map { MascotAnimation.tracks(for: $0.asset) }
         let frameCounts = tracks.map(frameCount) + [overviewFrameCount]
@@ -91,7 +96,7 @@ struct ExportMascotGIFs {
                     // Keep a real frame for visual QA, including idle's open eyes.
                     if frame == 80 {
                         try NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])!
-                            .write(to: output.appendingPathComponent("preview-\(mini ? "mini-" : "")\(pose.asset).png"))
+                            .write(to: output.appendingPathComponent("preview-\(variant)\(pose.asset).png"))
                     }
                 }
                 if let overview {

@@ -1,6 +1,8 @@
-"""Build Codex Signal's original blue bracket companion. Python 3; no dependencies."""
+"""Build Codex Signal's original characters: the blue bracket companion (Codex)
+and the orange crab (Claude Code). Python 3; no dependencies."""
 from pathlib import Path
 import json
+import math
 
 ROOT = Path(__file__).resolve().parent
 STATES = {
@@ -78,13 +80,134 @@ def build(kind, mini=False):
     style = '<style>.detail{display:none}</style>' if mini else ''
     return '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="'+STATES[kind]+'"><title>'+STATES[kind]+'</title><!-- Original blue bracket companion for Codex Signal. -->'+DEFS+style+ground+art+'</svg>\n'
 
+# Idle's open eyes, blinked in by the native and web animation.
+OPEN_EYES = {
+    'toy': '<rect x="45" y="57" width="8" height="10" rx="4" fill="#15345F"/><rect x="72" y="57" width="8" height="10" rx="4" fill="#15345F"/>',
+}
+
+
+# ---------------------------------------------------------------------------
+# Claude Code: original orange crab 「钳钳」. Same layer classes, poses and badge
+# slot as the companion, so both share one animation track set. No blue paint.
+CRAB_STATES = {
+    'idle': '钳钳正在休息', 'working': '钳钳正在工作',
+    'attention': '钳钳举钳等待确认', 'question': '钳钳有个问题',
+    'error': '钳钳提醒运行中断',
+    'ready': '钳钳捧着结果等待查看',
+}
+CRAB_INK = '#3D1C0C'
+CRAB_DEFS = '''<defs>
+<linearGradient id="crabShell" x1=".2" y1="0" x2=".7" y2="1" gradientUnits="objectBoundingBox"><stop stop-color="#FFB98A"/><stop offset=".38" stop-color="#FF8F4A"/><stop offset=".78" stop-color="#F26B26"/><stop offset="1" stop-color="#D9531A"/></linearGradient>
+<linearGradient id="crabClaw" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFC79C"/><stop offset=".5" stop-color="#FF9550"/><stop offset="1" stop-color="#E2621F"/></linearGradient>
+<linearGradient id="crabFace" x1="0" y1="0" x2=".2" y2="1"><stop stop-color="#FFF7EE"/><stop offset="1" stop-color="#FFDDC2"/></linearGradient>
+<radialGradient id="crabGround"><stop stop-color="#5C2A0E" stop-opacity=".25"/><stop offset="1" stop-color="#5C2A0E" stop-opacity="0"/></radialGradient>
+</defs>'''
+# Pupils sit in the eye bulbs at (48.5, 27) and (79.5, 27); working looks down.
+CRAB_EYE_Y = {'default': 27, 'working': 30.5}
+OPEN_EYES['crab'] = ('<rect x="45" y="22" width="7" height="10" rx="3.5" fill="'+CRAB_INK+'"/>'
+                     '<rect x="76" y="22" width="7" height="10" rx="3.5" fill="'+CRAB_INK+'"/>')
+
+
+def crab_badge(kind, mini=False):
+    if kind not in ('attention','question','error','ready'):
+        return ''
+    color = {'attention':'#FFC57B','question':'#C5B8FF','error':'#FFADA6','ready':'#FFE7D1'}[kind]
+    return badge(kind, mini).replace('#15345F', CRAB_INK).replace('#D8EDFF', color)
+
+
+def crab_eyes(kind):
+    ink = CRAB_INK
+    if kind == 'idle':
+        return '<path d="M43 28q5.5 5 11 0m20 0q5.5 5 11 0" fill="none" stroke="'+ink+'" stroke-width="3.6" stroke-linecap="round"/>'
+    if kind == 'error':
+        return ('<rect x="46" y="25.5" width="5" height="7" rx="2.5" fill="'+ink+'"/><rect x="77" y="25.5" width="5" height="7" rx="2.5" fill="'+ink+'"/>'
+                '<path d="m42 19 12 4m32-4-12 4" fill="none" stroke="'+ink+'" stroke-width="3.2" stroke-linecap="round"/>')
+    if kind == 'working':
+        return '<rect x="45.5" y="26" width="6" height="9" rx="3" fill="'+ink+'"/><rect x="76.5" y="26" width="6" height="9" rx="3" fill="'+ink+'"/>'
+    return '<rect x="45" y="21.5" width="7" height="11" rx="3.5" fill="'+ink+'"/><rect x="76" y="21.5" width="7" height="11" rx="3.5" fill="'+ink+'"/>'
+
+
+def pincer(joint, center, r, opening):
+    """An arm from the shell to a round claw with a V notch facing `opening` degrees."""
+    def point(angle, radius):
+        a = math.radians(angle)
+        return f'{center[0] + radius * math.cos(a):.1f} {center[1] + radius * math.sin(a):.1f}'
+    arm = (f'<path d="M{joint[0]} {joint[1]}L{center[0]} {center[1]}" stroke="#EE7430" '
+           'stroke-width="7" stroke-linecap="round"/>')
+    claw = (f'<path d="M{point(opening, r * .2)}L{point(opening + 27, r)}'
+            f'A{r} {r} 0 1 1 {point(opening - 27, r)}Z" fill="url(#crabClaw)"/>')
+    shine = f'<circle class="detail" cx="{center[0] - r * .3:.1f}" cy="{center[1] + r * .25:.1f}" r="{r * .22:.1f}" fill="#FFE6D2" opacity=".7"/>'
+    return arm + claw + shine
+
+
+def mirror(joint, center, r, opening):
+    return (128 - joint[0], joint[1]), (128 - center[0], center[1]), r, 180 - opening
+
+
+CRAB_CLAWS = {
+    'rest': ((30, 78), (15, 63), 11, -90),
+    # Claws are described on the left; mirror() places the right one.
+    'raised': ((28, 66), (14, 44), 11, -90),
+    'pondering': ((28, 66), (16, 44), 11, -55),
+    'working': ((34, 82), (42, 89), 10, -55),
+    'ready': ((30, 84), (42, 96), 9, 0),
+    'error': ((28, 82), (14, 88), 10, 125),
+    'idle': ((30, 84), (19, 90), 10, -60),
+}
+
+
+def build_crab(kind, mini=False):
+    legs = ''.join(f'<path d="M{x0} {y0}L{x1} {y1}M{128 - x0} {y0}L{128 - x1} {y1}"/>'
+                   for x0, y0, x1, y1 in ((38, 89, 30, 101), (46, 93, 41, 105), (55, 95, 53, 106)))
+    shell = ('<g fill="none" stroke="#D9581C" stroke-width="5.5" stroke-linecap="round">'+legs+'</g>'
+             '<rect x="44" y="27" width="9" height="20" rx="4.5" fill="#F07A35"/><rect x="75" y="27" width="9" height="20" rx="4.5" fill="#F07A35"/>'
+             '<path d="M64 42C84 42 100 49 104 64C108 80 98 95 78 98C70 99 58 99 50 98C30 95 20 80 24 64C28 49 44 42 64 42Z" fill="url(#crabShell)"/>'
+             '<path d="M33 84C46 94 82 94 95 84C90 94 78 98 64 98C50 98 38 94 33 84Z" fill="#C94A14" opacity=".35"/>'
+             '<path class="detail" d="M36 58C42 50 54 46 66 46" fill="none" stroke="#FFE6D2" stroke-opacity=".8" stroke-width="2.4" stroke-linecap="round"/>'
+             '<path d="M44 70C50 63 78 63 84 70C89 77 84 88 74 90C68 91 60 91 54 90C44 88 39 77 44 70Z" fill="url(#crabFace)"/>'
+             '<circle cx="48.5" cy="27" r="10" fill="url(#crabFace)" stroke="#E06A2A" stroke-width="2.5"/>'
+             '<circle cx="79.5" cy="27" r="10" fill="url(#crabFace)" stroke="#E06A2A" stroke-width="2.5"/>')
+    mouth = {
+        'error': '<ellipse cx="64" cy="77" rx="3" ry="2.5" fill="'+CRAB_INK+'"/>',
+        'idle': '<path d="M61 76q3 2 6 0" fill="none" stroke="#A4502A" stroke-width="2" stroke-linecap="round"/>',
+        'working': '<g class="detail" fill="none" stroke="#D2622A" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><path d="m55 74 4 3-4 3m10 0h7"/></g>',
+    }.get(kind, '<path d="M59 76q5 4 10 0" fill="none" stroke="#A4502A" stroke-width="2.2" stroke-linecap="round"/>')
+    body = shell + mouth + '<g class="m-eyes">' + crab_eyes(kind) + '</g>'
+    if kind == 'question':
+        body = '<g transform="rotate(-8 64 66)">'+body+'</g>'
+    if kind == 'ready':
+        body += ('<rect x="44" y="84" width="40" height="24" rx="5" fill="#FFF3E6" stroke="#B8693C" stroke-width="2"/>'
+                 '<path d="M53 92h22m-22 7h15" stroke="#B8693C" stroke-width="3" stroke-linecap="round"/>')
+    pose = {'attention': 'rest', 'question': 'rest'}.get(kind, kind)
+    left = CRAB_CLAWS[pose]
+    right = CRAB_CLAWS[{'attention': 'raised', 'question': 'pondering'}.get(kind, pose)]
+    if mini:
+        body = '<g transform="translate(-7 -7) scale(1.11)">'+body+'</g>'
+    art = ('<g class="m-character"><g class="m-body">'+body+'</g>'
+           +'<g class="m-left">'+pincer(*left)+'</g><g class="m-right">'+pincer(*mirror(*right))+'</g></g>'
+           +'<g class="m-badge">'+crab_badge(kind, mini)+'</g>')
+    ground = '' if mini else '<ellipse class="detail" cx="64" cy="111" rx="44" ry="7" fill="url(#crabGround)"/>'
+    style = '<style>.detail{display:none}</style>' if mini else ''
+    return ('<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="'
+            +CRAB_STATES[kind]+'"><title>'+CRAB_STATES[kind]+'</title><!-- Original orange crab for Claude Code sessions in Codex Signal. -->'
+            +CRAB_DEFS+style+ground+art+'</svg>\n')
+
+
+# Skin name → (file prefix, builder). The file prefix is also the art key prefix.
+SKINS = {'toy': ('toy-', build), 'crab': ('crab-', build_crab)}
+
+
 if __name__ == '__main__':
-    for state in STATES:
-        (ROOT / ('toy-'+state+'.svg')).write_text(build(state), encoding='utf-8')
-        (ROOT / ('toy-mini-'+state+'.svg')).write_text(build(state, True), encoding='utf-8')
-    frames = {('mini-' if mini else '')+state: build(state, mini)
-              for state in STATES for mini in (False, True)}
+    frames = {}
+    for skin, (prefix, builder) in SKINS.items():
+        key = '' if skin == 'toy' else prefix
+        for state in STATES:
+            (ROOT / (prefix+state+'.svg')).write_text(builder(state), encoding='utf-8')
+            (ROOT / (prefix+'mini-'+state+'.svg')).write_text(builder(state, True), encoding='utf-8')
+            for mini in (False, True):
+                frames[key+('mini-' if mini else '')+state] = builder(state, mini)
     (ROOT / 'mascot-art.js').write_text(
         '// Generated by build_toys.py; edit the generator instead.\n'
-        + 'window.CodexMascotArt = '+json.dumps(frames, ensure_ascii=False)+';\n', encoding='utf-8')
-    print(f'Generated {len(STATES) * 2} SVGs and the offline animation artwork bundle.')
+        + 'window.CodexMascotArt = '+json.dumps(frames, ensure_ascii=False)+';\n'
+        + 'window.CodexMascotOpenEyes = '+json.dumps(OPEN_EYES, ensure_ascii=False)+';\n', encoding='utf-8')
+    print(f'Generated {len(SKINS) * len(STATES) * 2} SVGs and the offline animation artwork bundle.')

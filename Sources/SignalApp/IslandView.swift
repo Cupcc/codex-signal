@@ -135,7 +135,7 @@ struct IslandView: View {
     private var statusBar: some View {
         HStack(spacing: 0) {
             HStack(spacing: 5) {
-                MascotView(phase: model.aggregatePhase,
+                MascotView(phase: model.aggregatePhase, skin: model.aggregateSkin,
                            size: 22, motionActive: model.expanded)
                 if !layout.headerUsesNotchSpace {
                     Text("Codex Signal").font(.system(size: 12, weight: .semibold))
@@ -251,7 +251,8 @@ struct IslandView: View {
         let source = SourceAppearance(session.source)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
-                MascotView(phase: session.phase, seen: session.seen, size: 32, motionActive: model.expanded)
+                MascotView(phase: session.phase, seen: session.seen, skin: MascotSkin(session.source),
+                           size: 32, motionActive: model.expanded)
                     .padding(.top, 2)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(session.displayTitle)
@@ -474,7 +475,8 @@ struct IslandView: View {
         return HStack(spacing: 8) {
             Button { model.openIslandNotice() } label: {
                 HStack(spacing: 12) {
-                    MascotView(phase: session.phase, seen: session.seen, size: 36, motionActive: !model.expanded)
+                    MascotView(phase: session.phase, seen: session.seen, skin: MascotSkin(session.source),
+                               size: 36, motionActive: !model.expanded)
                         .id(session.id + session.turnId + (session.requestId ?? "") + session.phase.rawValue)
                     VStack(alignment: .leading, spacing: 5) {
                         HStack(spacing: 6) {
@@ -500,7 +502,7 @@ struct IslandView: View {
             }
             .buttonStyle(IslandButtonStyle())
             .help("查看会话：\(session.displayTitle)")
-            .accessibilityLabel("\(appearance.title)，\(session.displayTitle)，\(notice.sessions.count) 条提醒，查看会话")
+            .accessibilityLabel("\(appearance.title)，\(SourceAppearance(session.source).title)，\(session.displayTitle)，\(notice.sessions.count) 条提醒，查看会话")
             Button { model.dismissIslandNotice() } label: {
                 Image(systemName: "xmark").font(.system(size: 10, weight: .medium))
                     .frame(width: 24, height: 28)
@@ -518,7 +520,7 @@ struct IslandView: View {
         Button { model.setExpanded(true) } label: {
             HStack(spacing: 0) {
                 HStack(spacing: 5) {
-                    MascotView(phase: model.aggregatePhase,
+                    MascotView(phase: model.aggregatePhase, skin: model.aggregateSkin,
                                size: 22, motionActive: !model.expanded)
                     Text("\(model.runningCount)")
                         .foregroundStyle(model.runningCount > 0 ? PhaseAppearance(.running).color : muted)

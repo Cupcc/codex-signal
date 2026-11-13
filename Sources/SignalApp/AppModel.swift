@@ -101,6 +101,7 @@ final class AppModel: ObservableObject {
     }
     var runningCount: Int { activeSessions.filter { $0.phase == .running }.count }
     var aggregatePhase: SessionPhase? { IslandNotice.aggregatePhase(sessions) }
+    var aggregateSkin: MascotSkin { IslandNotice.aggregateSkin(sessions) }
     var pendingCount: Int { activeSessions.filter(\.pending).count }
     var readyCount: Int { activeSessions.filter(\.ready).count }
     var unreadCount: Int { sessions.filter(\.unread).count }
@@ -674,7 +675,7 @@ final class AppModel: ObservableObject {
             "processID": ProcessInfo.processInfo.processIdentifier, "sessions": rows, "visibleIDs": visibleSessions.map(\.id), "selectedID": selectedID as Any? ?? NSNull(),
             "pendingCount": pendingCount, "unreadCount": unreadCount, "expanded": expanded,
             "runningCount": runningCount, "aggregatePhase": aggregatePhase?.rawValue as Any? ?? NSNull(), "readyCount": readyCount,
-            "mascotState": PhaseAppearance(aggregatePhase).asset,
+            "mascotState": PhaseAppearance(aggregatePhase).asset, "mascotSkin": aggregateSkin == .crab ? "crab" : "companion",
             "islandNoticeID": islandNotice?.id.uuidString as Any? ?? NSNull(),
             "islandNoticePhase": islandNotice?.primary.phase.rawValue as Any? ?? NSNull(),
             "islandNoticeCount": islandNotice?.sessions.count ?? 0,

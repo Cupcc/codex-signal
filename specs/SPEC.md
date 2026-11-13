@@ -1,5 +1,7 @@
 # Codex Signal 首版工程规格
 
+> 本文为首版（0.1）规格，保留当时的范围与取舍。后续版本已加入自动接入 Hooks、应用内更新、开机启动和 Claude Code 支持，当前能力以 [README](../README.md) 与 [接入指南](CONNECT.md) 为准。下文不变量仍然有效，Claude Code 的增量见文末。
+
 目标是将已选 B 会话伙伴岛交付为可构建、可启动、可回放验收的原生 macOS 应用。现有 design/DESIGN.md 是交互依据。首版实现通知闭环，真实 Codex 的覆盖范围由已验证事件能力决定。
 
 ## 范围
@@ -29,7 +31,7 @@
 
 事件到达只更新状态，不抢焦点。用户点击状态栏或浮条后才让面板接收键盘。面板失去焦点、切换应用或点击其他应用时自动收起；焦点转入声音设置弹窗时保持展开，在弹窗内操作不触发收起。Escape 收起，方向键切换，Return 打开来源。系统减少动态效果下不播放位移动画。首版使用静态角色，不引入持续动画。
 
-语音使用 `Sources/SignalApp/Resources/Audio` 中的四个 MP3 文件，按状态选择，空闲时立即播放，播放期间到达的提醒按顺序播放。默认开启，首次启动不会播放历史事件。设置预览复用 `codex-approval.mp3`。音频缺失或播放失败时跳过该条并记录日志，不阻塞事件接收。
+语音使用 `Sources/SignalApp/Resources/Audio` 中的 MP3 文件，Codex 与 Claude Code 各四个（`codex-*`、`claude-*`），按来源与状态选择，空闲时立即播放，播放期间到达的提醒按顺序播放。默认开启，首次启动不会播放历史事件。设置预览复用 `codex-approval.mp3`。音频缺失或播放失败时跳过该条并记录日志，不阻塞事件接收。
 
 ## 能力边界
 
@@ -42,3 +44,14 @@
 ## 交付判定
 
 本地构建与事件回放可判定 VERIFIED。真实 CLI、桌面事件、硬件刘海、多显示器、真实锁屏和听感需要各自证据。未触发的条件标记 NOT VERIFIED 或 INCONCLUSIVE，不写成全量验收通过。
+
+## Claude Code 增量（0.7.0）
+
+- source 增加 `claude`，与 Codex 来源并列；一行仍以 source 与 sessionId 联合识别，不同代理的同名会话不合并。不变量 1–10 同样适用。
+- Claude Code 没有轮次标识，以每次提问的 `prompt_id` 作为 turnId；首次提问前的事件不写入。未经 `UserPromptSubmit` 出现的新 prompt_id（如 slash 命令）先补一个 started。授权与 `AskUserQuestion` 按工具调用关联，`PostToolUse` 解除对应请求。
+- `StopFailure` 映射 failed，是首个注册的整轮失败 Hook，仅表示本轮因 API 错误结束，尚未实测。`SessionEnd` 将记录中的当前轮次收为 stopped（`/exit` 的 `SessionEnd` 自带新的 prompt_id，不使用）；Esc 中断和拒绝授权没有 Hook，状态保持到下一次提问或退出会话。不根据静默时长推断。
+- 接入写入 Claude Code 的 `settings.json`，未检测到配置目录时不创建，Claude Code 自动载入，无需审阅。共享服务状态核对与本地标题索引只用于 Codex；Claude Code 只使用 Hook 提供的标题。
+- 打开会话回到原终端标签页，找不到时在新标签页填入 `claude --resume`，不按标签页标题匹配。语音使用 `claude-*.mp3`，不播报“Codex”。
+- Claude Code 会话使用原创橙色小螃蟹「钳钳」，Codex 会话沿用蓝色伙伴，见 [产品与交互设计](../design/DESIGN.md#claude-code-小螃蟹2026-11-13)。
+
+Hook 映射与接入细节见 [接入 Claude Code](CONNECT.md#接入-claude-code)。

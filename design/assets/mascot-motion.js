@@ -76,8 +76,9 @@
       if (record) { record.visible=entry.isIntersecting; sync(record); }
     }
   });
-  function mount(element, state, mini=false) {
-    const source = window.CodexMascotArt[(mini?'mini-':'')+state];
+  // skin: 'toy' (Codex companion) or 'crab' (Claude Code); art keys prefix the crab only.
+  function mount(element, state, mini=false, skin='toy') {
+    const source = window.CodexMascotArt[(skin==='crab'?'crab-':'')+(mini?'mini-':'')+state];
     if (!source) return element;
     const prior = [...records].find(r=>r.svg===element);
     if (prior) {prior.animations.forEach(a=>a.cancel());observer.unobserve(element);records.delete(prior);}
@@ -90,7 +91,7 @@
     for (const attr of element.attributes) {
       if (!['src','alt','role','aria-label','data-state','data-motion'].includes(attr.name)) svg.setAttribute(attr.name,attr.value);
     }
-    svg.classList.add('codex-mascot'); svg.dataset.state=state; svg.dataset.mini=String(mini);
+    svg.classList.add('codex-mascot'); svg.dataset.state=state; svg.dataset.mini=String(mini); svg.dataset.skin=skin;
     if (!prior && element.getAttribute('alt') === '') {svg.setAttribute('aria-hidden','true');}
     // Each inline SVG has private paint IDs, avoiding collisions across instances.
     if (state === 'idle') {
@@ -98,9 +99,8 @@
       const closed=document.createElementNS('http://www.w3.org/2000/svg','g'); closed.setAttribute('class','m-idle-closed');
       while(eye.firstChild) closed.append(eye.firstChild);
       eye.append(closed);
-      const open=document.createElementNS('http://www.w3.org/2000/svg','g');open.setAttribute('class','m-idle-open');open.style.opacity='0';
-      for(const x of [45,72]) { const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
-        for(const [k,v] of Object.entries({x,y:57,width:8,height:10,rx:4,fill:'#15345F'}))rect.setAttribute(k,v);open.append(rect); }
+      const art=new DOMParser().parseFromString('<g xmlns="http://www.w3.org/2000/svg">'+window.CodexMascotOpenEyes[skin]+'</g>','image/svg+xml');
+      const open=document.importNode(art.documentElement,true);open.setAttribute('class','m-idle-open');open.style.opacity='0';
       eye.append(open);
     }
     element.replaceWith(svg);
@@ -109,16 +109,16 @@
   }
   function refresh(){document.documentElement.dataset.mascotReduced=String(reduced||motionQuery.matches);records.forEach(sync);}
   window.CodexMascot={
-    setState(element,state) {return mount(element,state,element.dataset.mini==='true');},
+    setState(element,state) {return mount(element,state,element.dataset.mini==='true',element.dataset.skin||'toy');},
     replay(element) {const r=[...records].find(r=>r.svg===element);if(!r)return;
       r.animations.forEach(a=>a.cancel());r.animations=[];r.built=false;r.suppressEntrance=false;sync(r);},
     setPaused(value){paused=Boolean(value);refresh();},
     setReduced(value){reduced=Boolean(value);refresh();},
     get reduced(){return reduced||motionQuery.matches;}
   };
-  for(const image of document.querySelectorAll('img[src*="toy-"]')) {
-    const match=image.getAttribute('src').match(/toy-(mini-)?(idle|working|attention|question|error|ready)\.svg$/);
-    if(match)mount(image,match[2],Boolean(match[1]));
+  for(const image of document.querySelectorAll('img[src*="toy-"],img[src*="crab-"]')) {
+    const match=image.getAttribute('src').match(/(toy|crab)-(mini-)?(idle|working|attention|question|error|ready)\.svg$/);
+    if(match)mount(image,match[3],Boolean(match[2]),match[1]);
   }
   document.addEventListener('visibilitychange',refresh);
   motionQuery.addEventListener('change',()=>{refresh();window.dispatchEvent(new Event('mascot-motion-change'));});

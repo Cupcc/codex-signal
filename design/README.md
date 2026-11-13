@@ -1,10 +1,10 @@
 # Codex Signal · 设计入口
 
-以 **CodeIsland 的灵动岛与会话框架**为基础，加入 **Coucou 式圆润小玩偶**与中文系统语音。覆盖 Codex 桌面版和 CLI。
+以 **CodeIsland 的灵动岛与会话框架**为基础，加入 **Coucou 式圆润小玩偶**与中文系统语音。覆盖 Codex 桌面版、CLI 与 Claude Code。
 
 ## 先看画面
 
-- [蓝色 Codex 角色设计](ui/08-character.html)：六态动效、状态切换、暂停/重播与实际尺寸；[应用动效 GIF](../exports/mascot-motion/README.md)。
+- [角色设计](ui/08-character.html)：Codex 的蓝色伙伴与 Claude Code 的橙色小螃蟹，六态动效、状态切换、暂停/重播与实际尺寸；[应用动效 GIF](../exports/mascot-motion/README.md)。
 
 - [打开三版对比页](compare.html)：可并排比较、单张查看、切换到实际尺寸；无需联网。
 - [A 伙伴接力](images/relay.png)：早期对照，突出一个任务。
@@ -45,4 +45,4 @@ HTML 内的产品按钮为静态视觉元素；未接入真实会话、系统语
 
 `ui/01-relay.html`、`ui/02-inbox.html`、`ui/03-dock.html`、`ui/04-states.html`、`ui/05-settings.html`、`ui/06-dock-flows.html`（历史 C 场景）、`ui/07-inbox-flows.html`（当前 B 场景）是独立静态画板；依赖 `assets/toy-*.svg`，请保留相对目录。前三版视口为 1440×900，状态图与泊位场景图为 1440×1100，设置图为 1440×1000，B 场景图为 1440×1560。
 
-蓝色括号伙伴由 `assets/build_toys.py` 生成，无外部依赖。直接运行 `python3 assets/build_toys.py` 可重建六个标准 SVG 与六个小尺寸 SVG。正式画面没有外部字体、跟踪脚本或第三方 CDN。
+蓝色括号伙伴（`toy-*.svg`）与橙色小螃蟹（`crab-*.svg`）由 `assets/build_toys.py` 生成，无外部依赖。直接运行 `python3 assets/build_toys.py` 可重建两个角色各六个标准 SVG 与六个小尺寸 SVG。正式画面没有外部字体、跟踪脚本或第三方 CDN。

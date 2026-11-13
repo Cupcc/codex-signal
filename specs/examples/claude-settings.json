@@ -1,0 +1,81 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/homebrew/bin/python3 '/Users/<用户名>/Library/Application Support/Codex Signal/Bridge/<内容摘要>/signal_bridge.py' --input hook --source claude --data-dir '/Users/<用户名>/Library/Application Support/Codex Signal'",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/homebrew/bin/python3 '/Users/<用户名>/Library/Application Support/Codex Signal/Bridge/<内容摘要>/signal_bridge.py' --input hook --source claude --data-dir '/Users/<用户名>/Library/Application Support/Codex Signal'",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/homebrew/bin/python3 '/Users/<用户名>/Library/Application Support/Codex Signal/Bridge/<内容摘要>/signal_bridge.py' --input hook --source claude --data-dir '/Users/<用户名>/Library/Application Support/Codex Signal'",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/homebrew/bin/python3 '/Users/<用户名>/Library/Application Support/Codex Signal/Bridge/<内容摘要>/signal_bridge.py' --input hook --source claude --data-dir '/Users/<用户名>/Library/Application Support/Codex Signal'",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/homebrew/bin/python3 '/Users/<用户名>/Library/Application Support/Codex Signal/Bridge/<内容摘要>/signal_bridge.py' --input hook --source claude --data-dir '/Users/<用户名>/Library/Application Support/Codex Signal'",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/homebrew/bin/python3 '/Users/<用户名>/Library/Application Support/Codex Signal/Bridge/<内容摘要>/signal_bridge.py' --input hook --source claude --data-dir '/Users/<用户名>/Library/Application Support/Codex Signal'",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/homebrew/bin/python3 '/Users/<用户名>/Library/Application Support/Codex Signal/Bridge/<内容摘要>/signal_bridge.py' --input hook --source claude --data-dir '/Users/<用户名>/Library/Application Support/Codex Signal'",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

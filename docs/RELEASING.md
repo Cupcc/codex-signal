@@ -27,7 +27,7 @@ Swift 可按套件或用例筛选，筛选模式只运行匹配的 Swift 测试�
 | 会话状态、请求、持久化或来源 | 对应的 `SessionStoreTests`、`PendingRequestTests`、`RuntimeStatusTests`、`SessionMetadataTests`、`SessionSourceTests`；跨到提醒时加相关 `AppModelTests` 或 `MessageIntakeTests` 用例 |
 | 列表、筛选、导航或提醒 | 对应的 `AppModelTests`、`SessionNavigatorTests`、`IslandNoticeTests`、`MessageIntakeTests` 用例 |
 | 窗口、浮层或布局 | `IslandPanelTests`、`IslandLayoutTests` 的相关用例；过程检查见 [排查手册](playbooks/README.md) |
-| 伙伴素材、动画或语音 | 对应的 `MascotAnimationTests`、`VoicePolicyTests` 用例 |
+| 角色素材（蓝色伙伴与小螃蟹）、动画或语音 | 对应的 `MascotAnimationTests`、`VoicePolicyTests` 用例；角色按来源或汇总状态选择时加 `IslandNoticeTests`。重新生成素材后运行 `./scripts/export_mascot_gifs.sh`，它会校验两个角色的图层覆盖与 GIF |
 | Hooks 配置、桥接或请求关联 | `python3 scripts/test_configure_hooks.py`、`python3 scripts/test_bridge.py`、`python3 scripts/test_correlation.py` 中受影响的测试文件；接入生命周期变更加相关 `CodexConnectionTests` 用例 |
 | Claude Code 接入、映射、导航或语音 | `python3 scripts/test_configure_hooks.py -k Claude`、`python3 scripts/test_bridge.py -k claude`；Swift 用 `./script/test.sh --filter 'claude'` 运行 Claude Code 相关用例，共用逻辑变更时再加上面对应行 |
 | 自动更新 | 相关 `UpdateTests` 用例；安装器变更运行 `python3 scripts/test_update_installer.py` |

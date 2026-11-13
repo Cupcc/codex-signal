@@ -4,11 +4,12 @@
 
 让 Codex 和 Claude Code 的运行、审批和提问状态，留在屏幕顶部。
 
-Codex Signal 是一个原生 macOS 会话提醒工具，支持 Codex 与 Claude Code：收起时是一只蓝色伙伴，展开后查看多个会话，并回到需要处理的任务。界面和语音提醒均为中文。
+Codex Signal 是一个原生 macOS 会话提醒工具，支持 Codex 与 Claude Code：Codex 会话是蓝色伙伴，Claude Code 会话是橙色小螃蟹。收起时停在屏幕顶部，展开后查看多个会话，并回到需要处理的任务。界面和语音提醒均为中文。
 
 [下载最新版](https://github.com/Cupcc/codex-signal/releases/latest) · [接入指南](specs/CONNECT.md) · [更新记录](CHANGELOG.md)
 
 <img src="exports/mascot-motion/mascot-six-states.gif" alt="蓝色伙伴的运行中、空闲、待确认、待回答、待查看和运行失败六种动效" width="720">
+<img src="exports/mascot-motion/mascot-crab-six-states.gif" alt="Claude Code 橙色小螃蟹的运行中、空闲、待确认、待回答、待查看和运行失败六种动效" width="720">
 
 [标准与迷你版动效](exports/mascot-motion/README.md)直接使用应用当前的角色图层和动画轨道导出。
 
@@ -23,7 +24,7 @@ Codex Signal 是一个原生 macOS 会话提醒工具，支持 Codex 与 Claude 
 - **应用更新**：默认启动时及每 6 小时检查 GitHub 正式版，自动下载并校验，点击“重启并更新”安装。设置和菜单栏右键菜单始终提供 GitHub 手动下载入口。
 - **自动接入**：安装或升级后的首次启动检查 Codex 和 Claude Code 的 Hooks，普通启动不检查；设置中可分别强制重新配置。Codex 首次使用仍需审阅 Hooks；Claude Code 自动生效。
 - **产品信息**：Finder 和“关于”窗口使用蓝色伙伴图标；设置底部显示版本与构建号，并提供“关于”按钮。“关于”提供项目主页、问题反馈和第三方许可入口。设置中提供退出应用入口，支持 ⌘Q；也可在设置中开启开机启动。
-- **原生动效**：折叠伙伴汇总全部会话状态，显示运行数量；展开高度适配列表内容，收起与展开时保持顶部居中。伙伴随状态变化，支持系统“减少动态效果”设置。
+- **原生动效**：折叠区的角色汇总全部会话状态，显示运行数量；展开高度适配列表内容，收起与展开时保持顶部居中。角色随状态变化，支持系统“减少动态效果”设置。列表和提示按来源显示蓝色伙伴或橙色小螃蟹；折叠区只在当前状态全部来自 Claude Code 时显示螃蟹。
 
 关闭提醒不会取消任务，也不会代替回答或审批。“本轮结束”只表示运行结束，不代表测试成功。
 
@@ -112,7 +113,7 @@ python3 scripts/verify_runtime.py --check-speech
 
 ## 构建发布包
 
-版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.7.1（Build 11）**，“关于 Codex Signal”中可查看。
+版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.8.0（Build 12）**，“关于 Codex Signal”中可查看。
 
 ```sh
 ./script/release.sh
@@ -124,8 +125,8 @@ python3 scripts/verify_runtime.py --check-speech
 
 ```text
 dist/releases/
-├── CodexSignal-0.7.1-arm64.dmg
-├── CodexSignal-0.7.1-arm64.zip
+├── CodexSignal-0.8.0-arm64.dmg
+├── CodexSignal-0.8.0-arm64.zip
 └── SHA256SUMS.txt
 ```
 
@@ -148,4 +149,4 @@ dist/releases/
 
 ## 致谢与第三方许可
 
-会话提醒与导航方案参考 [CodeIsland](https://github.com/wxtsky/CodeIsland)；屏幕几何代码改编自 [Coucou](https://github.com/Louis-CFM/coucou)。相关 MIT 许可保留在 [ThirdParty](ThirdParty/README.md)，并随应用分发。原生应用使用原创蓝色角色，设计资料中的参考资产另有[来源说明](design/assets/ATTRIBUTION.md)。
+会话提醒与导航方案参考 [CodeIsland](https://github.com/wxtsky/CodeIsland)；屏幕几何代码改编自 [Coucou](https://github.com/Louis-CFM/coucou)。相关 MIT 许可保留在 [ThirdParty](ThirdParty/README.md)，并随应用分发。原生应用使用原创蓝色伙伴与橙色小螃蟹，设计资料中的参考资产另有[来源说明](design/assets/ATTRIBUTION.md)。

@@ -81,3 +81,15 @@ python3 scripts/verify_runtime.py --check-speech --output .audit/runtime/runtime
 `./script/test.sh` 通过 65 项 Swift 测试、22 项桥接测试和16项关联测试，日志为 `.audit/runtime/focus-timeline-tests.log`。排序回归覆盖跨状态时间顺序、旧会话更新移到底部、相同时间稳定顺序、持久化、重新展开与筛选后默认选中最新会话。`./script/build_and_run.sh --verify` 构建、签名验证和启动检查通过，最终应用已恢复使用默认数据目录。
 
 原生 CUA 使用隔离目录逐步生成18条会话，实际观察到初始显示底部最新、向上滚动查看旧内容、查看历史时新会话到达保持位置、返回底部后跟随新会话追加。声音设置和时段菜单操作保持展开；实际点击 Finder 窗口后自动折叠，重新展开回到最新。Command-Tab 已接入工作区通知，但本轮工具发送的快捷键未形成可确认的应用切换，不计作该快捷键的实测通过。
+
+## 2026-11-13 Claude Code 接入
+
+| 条件 | 状态与依据 |
+| --- | --- |
+| 配置合并与隔离 | 自动测试覆盖：合并进 settings.json、保留其他设置、未检测到目录不创建、两种接收器互不影响。`python3 scripts/test_configure_hooks.py -k Claude` |
+| Hook 映射 | 自动测试覆盖：prompt_id 轮次、授权与提问按工具调用解除、会话结束收起当前轮次、只用 Claude Code 进程的 TTY、不读取 Codex 标题。`python3 scripts/test_bridge.py -k claude` |
+| 应用侧接入、导航与语音 | 自动测试覆盖：接入状态、事件只计入 Claude Code 连接、标签页或 `claude --resume` 恢复、`claude-*` 音频。`./script/test.sh --filter 'claude'` |
+| 非交互运行 | VERIFIED。Claude Code 2.1.323 的 `claude -p` 实测 `UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`Stop`、`SessionEnd` 字段与映射一致，见 [接入指南](CONNECT.md#接入-claude-code) |
+| 交互会话的授权、提问与 `/exit` 结束轮次 | VERIFIED。Claude Code 2.1.323，伪终端驱动的交互会话；Esc 中断和拒绝授权不触发 Hook，`idle_prompt` 不再使用。见 [接入指南](CONNECT.md#接入-claude-code) |
+| 真实终端中的标签页定位 | NOT VERIFIED。等待实机记录 |
+| `StopFailure` 整轮失败 | NOT VERIFIED。桥映射有自动测试，未触发真实 API 错误 |

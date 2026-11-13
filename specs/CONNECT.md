@@ -1,4 +1,4 @@
-# 接入和回放 Codex 事件
+# 接入和回放 Codex 与 Claude Code 事件
 
 安装、重新安装或升级后的首次启动会检查六项用户级 Hooks，无需运行命令或手动合并 JSON。普通启动不检查 Hooks。配置器保留其他 Hooks 和 notify，不修改信任记录。CLI 历史真实结果见 [真实接入验收](LIVE-VERIFICATION.md)，来源覆盖与限制见 [接入证据](research/architecture-b.md)。
 
@@ -24,7 +24,7 @@
 
 安装后的首次启动同时检查 Claude Code。配置目录为 `~/.claude`，设置了 `CLAUDE_CONFIG_DIR` 时使用该目录。目录不存在时不创建，记录为“未检测到”，等待用户点击“一键配置”。检查结果单独记录在数据目录的 `claude-connection.json`。
 
-配置器将七项 Hooks 合并进 `settings.json`：`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`PostToolUse`、`Stop`、`StopFailure` 和 `SessionEnd`。0.7.0 注册在 `Notification` 上的接收器在升级检查时移除，同组其他处理器保留。接收命令使用 `--source claude`，不写 `statusMessage`，避免每次工具调用都显示在 Claude Code 的进度提示中。版本核对、缺项补齐、强制重配、备份和符号链接拒绝与 Codex 相同；`model`、`permissions`、`env`、`statusLine` 等其他设置原样保留。Claude Code 通过文件监视自动载入 Hooks，不需要审阅。开发配置器对应参数为 `--agent claude --config-home <目录>`。
+配置器将七项 Hooks 合并进 `settings.json`：`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`PostToolUse`、`Stop`、`StopFailure` 和 `SessionEnd`。0.7.0 注册在 `Notification` 上的接收器在升级检查时移除，同组其他处理器保留。接收命令使用 `--source claude`，不写 `statusMessage`，避免每次工具调用都显示在 Claude Code 的进度提示中。版本核对、缺项补齐、强制重配、备份和符号链接拒绝与 Codex 相同；`model`、`permissions`、`env`、`statusLine` 等其他设置原样保留。Claude Code 通过文件监视自动载入 Hooks，不需要审阅。开发配置器对应参数为 `--agent claude --config-home <目录>`。写入结构见 [examples/claude-settings.json](examples/claude-settings.json)，路径为占位符。
 
 Claude Code 没有轮次标识，桥使用每次提问的 `prompt_id` 作为 turnId，并在关联数据库中记录每个会话的当前轮次。slash 命令等未经 `UserPromptSubmit` 的新 `prompt_id`，在其首个工具或结束事件前补写 started。首次提问前的事件（如 `SessionStart`）没有 `prompt_id`，不写事件。
 
@@ -73,7 +73,7 @@ python3 scripts/replay.py --data-dir /tmp/codex-signal-replay --scenario stale
 
 回放使用固定事件标识。在相同持久化目录中重复执行同一个场景会被去重。重新验收时使用新的隔离目录。`--scenario long-list` 增加 16 个演示会话。
 
-指定 `--data-dir` 的运行不会自动修改真实 Codex 配置。测试自动配置时，同时传入 `--codex-home /tmp/codex-signal-test-home`，将配置写入隔离目录。`--demo` 始终跳过自动配置，界面上的配置按钮也不可用。
+指定 `--data-dir` 的运行不会自动修改真实 Codex 或 Claude Code 配置。测试自动配置时，同时传入 `--codex-home /tmp/codex-signal-test-home` 或 `--claude-home <隔离目录>`，将配置写入隔离目录；未传入的代理不配置。`--demo` 始终跳过自动配置，界面上的配置按钮也不可用。
 
 ## 开发诊断：生成接收配置片段
 
@@ -91,7 +91,7 @@ python3 scripts/signal_bridge.py --print-hooks --source auto > /tmp/codex-signal
 python3 /Applications/CodexSignal.app/Contents/Resources/Bridge/signal_bridge.py --print-hooks --source auto > /tmp/codex-signal-hooks.json
 ```
 
-`examples/hooks.*.json` 仅展示配置结构，脚本路径是占位符。实际接入应使用上面的命令生成本机配置。
+Claude Code 片段使用 `--source claude`。`examples/hooks.*.json` 与 `examples/claude-settings.json` 仅展示配置结构，脚本路径是占位符。实际接入应使用上面的命令生成本机配置。
 
 2. 检查生成文件中的 Python 路径、脚本路径和数据目录。移动仓库后重新生成。
 3. 在 Codex 官方 Hooks 界面审阅生成的 command hooks。CLI 使用 `/hooks`。将各事件的条目合并到现有配置，保留其他条目和现有 notify。不要直接用生成文件覆盖已有 hooks.json。
@@ -129,7 +129,7 @@ python3 scripts/signal_bridge.py --input notify --source cli --data-dir /tmp/cod
 
 每轮可保留多个待处理请求，匹配恢复只移除对应请求。完成消息先到时保留其 ID，迟到审批不会重新挂起。自动来源模式为同一会话和轮次固定关联分区，避免进程检测短暂失败拆散请求。消息覆盖和已知缺口见[消息与提醒链路审查](MESSAGE-AUDIT.md)。
 
-`StopFailure`、普通工具 PreToolUse、没有关联标识的 PostToolUse、SubagentStop 和未知事件不写事件。标准 event 模式可用于经过验证的外部适配器提供 failed，但本桥不从单次工具错误推断整轮失败。
+Codex 来源下，`StopFailure`、普通工具 PreToolUse、没有关联标识的 PostToolUse、SubagentStop 和未知事件不写事件；Claude Code 的映射见上文。标准 event 模式可用于经过验证的外部适配器提供 failed，但本桥不从单次工具错误推断整轮失败。
 
 缺失 session_id 或 turn_id 的生命周期事件被拒绝。标准事件只保存来源、标识、项目目录短名、状态和时间。项目短名仍可能包含业务名称，语音不朗读输入正文。Hook 模式 stdout 始终为空，输入或目录失败时退出 0。其他输入模式失败退出 2。
 

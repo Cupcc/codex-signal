@@ -2,7 +2,7 @@ import AppKit
 
 enum AppProduct {
     static let name = "Codex Signal"
-    static let summary = "屏幕顶部的 Codex 会话伙伴"
+    static let summary = "屏幕顶部的 Codex 与 Claude Code 会话伙伴"
     static let homepage = URL(string: "https://github.com/Cupcc/codex-signal")!
     static let feedback = homepage.appendingPathComponent("issues")
 

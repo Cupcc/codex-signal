@@ -15,14 +15,17 @@
 | B02 | malformed、未知事件、过大输入不会写入有效事件 | 桥测试 |
 | B03 | 并发桥写入无截断或覆盖 | 桥测试 |
 | B04 | 现有 notify/config 文件未修改 | 配置指纹前后比较 |
-| U01 | 实际 .app 启动，列表按 B 展示并加载蓝色角色 | 原生截图 |
+| B05 | Claude Code Hooks 合并进 settings.json，保留其他设置与 Hooks；未检测到配置目录时不创建 | `python3 scripts/test_configure_hooks.py -k Claude` |
+| B06 | Claude Code 以 prompt_id 为轮次，授权与提问按工具调用解除，会话结束收起当前轮次 | `python3 scripts/test_bridge.py -k claude` |
+| U01 | 实际 .app 启动，列表按 B 展示，按来源加载角色（Codex 蓝色伙伴、Claude Code 橙色小螃蟹） | 原生截图 |
 | U02 | 新事件不抢选中行或重排行序 | UI 交互与应用状态快照 |
 | U03 | 待处理筛选含已查看请求，空态可恢复全部 | UI 交互 |
 | U04 | Escape 收起、点击展开，设置声音生效 | UI 交互 |
 | U05 | 打开来源只声称打开应用，不声称准确定位 | UI 与代码审查 |
-| S01 | 语音立即播放、串行、暂停与静音策略 | 测试与语音输出证据 |
+| S01 | 语音立即播放、串行、暂停与静音策略；Claude Code 使用 `claude-*` 音频 | 测试与语音输出证据 |
 | L01 | CLI 真实完成/审批/中断等 | 官方 Hooks 信任后单独实测 |
 | L02 | 桌面真实完成/审批/提问等 | 桌面官方 Hooks 信任后单独实测 |
+| L03 | Claude Code 真实交互会话的开始/结束/授权/提问/会话结束及标签页定位 | 自动接入后单独实测 |
 | H01 | 刘海、外接屏、全屏、增大文字与真实锁屏 | 实际设备检查 |
 
 最终结果写入 specs/VERIFICATION.md，不预填通过。

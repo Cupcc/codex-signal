@@ -17,13 +17,24 @@ struct IslandNotice: Equatable, Identifiable {
         }
     }
 
-    static func aggregatePhase(_ sessions: [SignalSession]) -> SessionPhase? {
+    static func aggregatePhase(_ sessions: [SignalSession]) -> SessionPhase? { aggregate(sessions).phase }
+
+    /// The crab stands in only when every session behind the aggregate phase is
+    /// Claude Code, so mixed running work keeps one steady character.
+    static func aggregateSkin(_ sessions: [SignalSession]) -> MascotSkin {
+        let drivers = aggregate(sessions).drivers
+        return !drivers.isEmpty && drivers.allSatisfy { $0.source == .claude } ? .crab : .companion
+    }
+
+    private static func aggregate(_ sessions: [SignalSession]) -> (phase: SessionPhase?, drivers: [SignalSession]) {
         let active = sessions.filter(\.isVisible)
-        if let pending = active.filter(\.pending).min(by: { $0.updatedAt < $1.updatedAt }) { return pending.phase }
-        if active.contains(where: { $0.phase == .running }) { return .running }
-        if let problem = active.last(where: { $0.phase == .failed || $0.phase == .disconnected }) { return problem.phase }
-        if active.contains(where: \.ready) { return .completed }
-        return active.last?.phase
+        if let pending = active.filter(\.pending).min(by: { $0.updatedAt < $1.updatedAt }) { return (pending.phase, [pending]) }
+        let running = active.filter { $0.phase == .running }
+        if !running.isEmpty { return (.running, running) }
+        if let problem = active.last(where: { $0.phase == .failed || $0.phase == .disconnected }) { return (problem.phase, [problem]) }
+        let ready = active.filter(\.ready)
+        if !ready.isEmpty { return (.completed, ready) }
+        return (active.last?.phase, active.suffix(1))
     }
 
     static func receiving(_ events: [SignalEvent], sessions: [SignalSession], current: IslandNotice?) -> IslandNotice? {
