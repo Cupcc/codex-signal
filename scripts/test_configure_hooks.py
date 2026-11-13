@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 
 from configure_hooks import BRIDGE_FILES, configure, is_signal_hook
-from signal_bridge import HOOKS, hooks_config
+from signal_bridge import CLAUDE_HOOKS, HOOKS, hooks_config
 
 
 class ConfigureHooksTests(unittest.TestCase):
@@ -281,6 +281,85 @@ class ConfigureHooksTests(unittest.TestCase):
         self.assertEqual(json.loads(run.stdout)["hooksPath"], str(self.path))
         self.assertFalse((self.root / "empty-home/.codex").exists())
 
+
+
+class ConfigureClaudeTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="signal-claude-setup-")
+        self.root = Path(self.temporary.name)
+        self.claude = self.root / "claude home"
+        self.claude.mkdir()
+        self.data = self.root / "data"
+        self.path = self.claude / "settings.json"
+        self.existing = {"model": "opus", "env": {"KEEP": "1"}, "permissions": {"allow": ["Bash(ls)"]},
+                         "statusLine": {"type": "command", "command": "~/.claude/statusline.sh"},
+                         "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "existing-guard"}]}]}}
+        self.original = json.dumps(self.existing, indent=4).encode()
+        self.path.write_bytes(self.original)
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def read(self):
+        return json.loads(self.path.read_text())
+
+    def handlers(self, sources=frozenset({"claude"})):
+        return {name: [handler for group in groups for handler in group["hooks"] if is_signal_hook(handler, sources)]
+                for name, groups in self.read()["hooks"].items()}
+
+    def test_merges_into_settings_and_keeps_other_settings(self):
+        result = configure(self.claude, self.data, agent="claude")
+        self.assertEqual(result["hooksPath"], str(self.path))
+        self.assertEqual(Path(result["backupPath"]).read_bytes(), self.original)
+        merged = self.read()
+        for key in ("model", "env", "permissions", "statusLine"):
+            self.assertEqual(merged[key], self.existing[key])
+        self.assertEqual(merged["hooks"]["PreToolUse"][0], self.existing["hooks"]["PreToolUse"][0])
+        ours = {name: handlers for name, handlers in self.handlers().items() if handlers}
+        self.assertEqual(set(ours), set(CLAUDE_HOOKS))
+        self.assertTrue(all(len(handlers) == 1 and "statusMessage" not in handlers[0] for handlers in ours.values()))
+        self.assertEqual(merged["hooks"]["Notification"][-1]["matcher"], "idle_prompt")
+        self.assertFalse((self.claude / "hooks.json").exists())
+        self.assertFalse(configure(self.claude, self.data, agent="claude")["changed"])
+
+    def test_installed_command_records_claude_turn(self):
+        configure(self.claude, self.data, agent="claude")
+        command = self.handlers()["Stop"][0]["command"]
+        payload = {"hook_event_name": "Stop", "session_id": "claude-session", "prompt_id": "prompt-1", "cwd": "/example/Atlas"}
+        run = subprocess.run(command, shell=True, input=json.dumps(payload), text=True, capture_output=True, cwd=self.root, timeout=10)
+        self.assertEqual((run.returncode, run.stdout), (0, ""), run.stderr)
+        event = json.loads(next((self.data / "inbox").glob("*.json")).read_text())
+        self.assertEqual((event["source"], event["sessionId"], event["turnId"], event["kind"]),
+                         ("claude", "claude-session", "prompt-1", "completed"))
+
+    def test_codex_and_claude_receivers_stay_separate(self):
+        codex = self.root / "codex"
+        configure(codex, self.data)
+        configure(self.claude, self.data, agent="claude")
+        codex_before = (codex / "hooks.json").read_bytes()
+        self.assertTrue(configure(self.claude, self.data, force=True, agent="claude")["changed"])
+        self.assertEqual((codex / "hooks.json").read_bytes(), codex_before)
+        self.assertFalse(any(self.handlers(frozenset({"auto", "cli", "desktop", "unknown"})).values()))
+        codex_handlers = [h for groups in json.loads(codex_before)["hooks"].values() for g in groups for h in g["hooks"]]
+        self.assertFalse(any(is_signal_hook(h, {"claude"}) for h in codex_handlers))
+        self.assertEqual(sum(map(len, self.handlers().values())), len(CLAUDE_HOOKS))
+
+    def test_cli_agent_option_targets_settings(self):
+        env = dict(os.environ, HOME=str(self.root / "empty-home"))
+        run = subprocess.run([sys.executable, str(Path(__file__).parent / "configure_hooks.py"), "--agent", "claude",
+                              "--config-home", str(self.claude), "--data-dir", str(self.data)], env=env, text=True, capture_output=True, timeout=10)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(json.loads(run.stdout)["hooksPath"], str(self.path))
+        self.assertFalse((self.root / "empty-home/.claude").exists())
+
+    def test_symlinked_settings_are_left_alone(self):
+        target = self.root / "dotfiles-settings.json"
+        target.write_bytes(self.original)
+        self.path.unlink()
+        self.path.symlink_to(target)
+        with self.assertRaisesRegex(ValueError, "settings.json 是符号链接"):
+            configure(self.claude, self.data, agent="claude")
+        self.assertEqual(target.read_bytes(), self.original)
 
 if __name__ == "__main__":
     unittest.main()

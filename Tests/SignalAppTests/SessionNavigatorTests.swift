@@ -276,4 +276,19 @@ struct SessionNavigatorTests {
         #expect(!(script.contains("do script")))
         #expect(!(script.contains("do shell script")))
     }
+
+    @Test func claudeReturnsToItsTabOrResumesInANewOne() {
+        var value = session(.claude)
+        value.terminalBundleID = TerminalPreference.ghostty.rawValue
+        value.terminalTTY = "/dev/ttys013"
+        #expect(SessionNavigator.plan(for: value).target == .terminal(bundleID: "com.mitchellh.ghostty", tty: "/dev/ttys013"))
+        // Claude Code's tab titles come from the conversation, so never fall back to title matching.
+        value.terminalTTY = nil
+        #expect(SessionNavigator.plan(for: value).target == .recover)
+        value.terminalBundleID = "com.microsoft.VSCode"
+        value.terminalTTY = "/dev/ttys013"
+        #expect(SessionNavigator.plan(for: value).target == .recover)
+        value.cwd = "/tmp/a'b"
+        #expect(SessionNavigator.resumeCommand(for: value) == "cd -- '/tmp/a'\"'\"'b' && claude --resume '\(threadID)'")
+    }
 }

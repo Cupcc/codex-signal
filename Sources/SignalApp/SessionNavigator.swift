@@ -6,6 +6,8 @@ struct SessionNavigationPlan: Equatable {
         case codexThread(URL)
         case terminal(bundleID: String, tty: String)
         case terminalSession
+        /// No original tab to find; resume the session in a new terminal tab.
+        case recover
         case copyResume(String)
         case copyID(String)
     }
@@ -45,11 +47,16 @@ enum SessionNavigator {
     }
 
     static func plan(for session: SignalSession) -> SessionNavigationPlan {
-        if session.source == .cli {
+        if session.source.isTerminalClient {
             if let bundle = session.terminalBundleID, scriptableTerminals.contains(bundle),
                let tty = normalizedTTY(session.terminalTTY) {
                 return .init(target: .terminal(bundleID: bundle, tty: tty),
                              actionTitle: "打开会话", actionSymbol: "arrow.up.right", detail: "返回原来的标签页")
+            }
+            // Title matching relies on Codex's tab titles; Claude Code titles tabs from the conversation.
+            if session.source == .claude {
+                return .init(target: .recover, actionTitle: "打开会话",
+                             actionSymbol: "arrow.up.right", detail: "在新标签页恢复会话")
             }
             return .init(target: .terminalSession, actionTitle: "打开会话",
                          actionSymbol: "arrow.up.right", detail: "返回原来的标签页")
@@ -63,7 +70,8 @@ enum SessionNavigator {
 
     static func resumeCommand(for session: SignalSession) -> String? {
         guard UUID(uuidString: session.sessionId) != nil else { return nil }
-        let command = "codex resume \(shellQuote(session.sessionId))"
+        let id = shellQuote(session.sessionId)
+        let command = session.source == .claude ? "claude --resume \(id)" : "codex resume \(id)"
         guard let cwd = session.cwd, cwd.hasPrefix("/"),
               !cwd.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { return command }
         return "cd -- \(shellQuote(cwd)) && \(command)"
@@ -134,6 +142,8 @@ enum SessionNavigator {
                 return navigationResult(await runScript(script))
             case .failure(let error): return navigationResult(error)
             }
+        case .recover:
+            return .init(message: "未找到原标签页", didNavigate: false, isFailure: true)
         case .copyResume(let command):
             copy(command)
             return .init(message: "已复制恢复命令", didNavigate: false)

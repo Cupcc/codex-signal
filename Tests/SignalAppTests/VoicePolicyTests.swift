@@ -39,6 +39,21 @@ struct VoicePolicyTests {
         }
     }
 
+    @Test func claudeSessionsNeverAnnounceCodex() throws {
+        let cases: [(EventKind, VoiceClip)] = [
+            (.approval, .claudeApproval), (.question, .claudeQuestion), (.failed, .claudeFailed), (.completed, .claudeCompleted)
+        ]
+        for (kind, clip) in cases {
+            var value = event(kind)
+            value.source = .claude
+            #expect(VoicePolicy.clip(for: value) == clip)
+            #expect(clip.rawValue.hasPrefix("claude-") && clip.phrase.hasPrefix("Claude "))
+        }
+        var child = event(.completed, child: true)
+        child.source = .claude
+        #expect(VoicePolicy.clip(for: child) == nil)
+    }
+
     @Test func testEveryBundledClipDecodesToNonSilentAudio() throws {
         for clip in VoiceClip.allCases {
             let url = try #require(clip.url)

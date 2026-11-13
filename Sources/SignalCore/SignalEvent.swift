@@ -2,6 +2,12 @@ import Foundation
 
 public enum SessionSource: String, Codable, Sendable {
     case cli, desktop, unknown
+    /// Claude Code, in any client. Its terminal metadata identifies the tab.
+    case claude
+
+    public var isCodex: Bool { self != .claude }
+    /// Runs in a terminal tab and can be resumed with a shell command.
+    public var isTerminalClient: Bool { self == .cli || self == .claude }
 }
 
 public enum EventKind: String, Codable, Sendable {

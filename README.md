@@ -2,9 +2,9 @@
 
 # Codex Signal
 
-让 Codex 的运行、审批和提问状态，留在屏幕顶部。
+让 Codex 和 Claude Code 的运行、审批和提问状态，留在屏幕顶部。
 
-Codex Signal 是一个原生 macOS 会话提醒工具：收起时是一只蓝色伙伴，展开后查看多个会话，并回到需要处理的任务。界面和语音提醒均为中文。
+Codex Signal 是一个原生 macOS 会话提醒工具，支持 Codex 与 Claude Code：收起时是一只蓝色伙伴，展开后查看多个会话，并回到需要处理的任务。界面和语音提醒均为中文。
 
 [下载最新版](https://github.com/Cupcc/codex-signal/releases/latest) · [接入指南](specs/CONNECT.md) · [更新记录](CHANGELOG.md)
 
@@ -15,13 +15,13 @@ Codex Signal 是一个原生 macOS 会话提醒工具：收起时是一只蓝色
 ## 功能
 
 - **会话状态**：运行中、待确认、待回答、待查看、停止与异常；支持“全部 / 待处理 / 待查看”筛选。完成结果会保留待查看标记，直到标记已查看、关闭提醒或按保留期限清理。
-- **返回会话**：打开 Codex 桌面会话，或定位 Terminal、iTerm2、Ghostty 中对应的 CLI 标签页。定位失败时，在可用终端的新标签页填入恢复命令，按回车继续；失败时保留复制的命令。可设置首选终端。
-- **语音提醒**：立即播放对应状态的内置中文音频，播放期间到达的提醒按顺序播放；支持静音、安静时段和锁屏暂停。音频位于 `Sources/SignalApp/Resources/Audio`，设置中的「预览提醒」播放 `codex-approval.mp3`。
+- **返回会话**：打开 Codex 桌面会话，或定位 Terminal、iTerm2、Ghostty 中对应的 CLI 或 Claude Code 标签页。定位失败时，在可用终端的新标签页填入恢复命令（`codex resume` 或 `claude --resume`），按回车继续；失败时保留复制的命令。可设置首选终端。
+- **语音提醒**：立即播放对应状态的内置中文音频，播放期间到达的提醒按顺序播放；支持静音、安静时段和锁屏暂停。音频位于 `Sources/SignalApp/Resources/Audio`，Codex 使用 `codex-*.mp3`，Claude Code 使用 `claude-*.mp3`；设置中的「预览提醒」播放 `codex-approval.mp3`。
 - **轻量交互**：方向键选择、Return 执行主动作、Escape 收起；查看历史时保留滚动位置。
 - **提醒管理**：关闭单条提醒，或使用“全部已读”清除已结束及异常提醒，保留运行中、待确认和待回答会话；支持按 7、15、30 天自动清理，重启后保留状态。
 - **灵动岛提示**：审批、提问、结束与异常会短暂展开，6 秒后自动收回；支持合并提醒、独立开关和设置内预览。静音时仍可看到提示。
 - **应用更新**：默认启动时及每 6 小时检查 GitHub 正式版，自动下载并校验，点击“重启并更新”安装。设置和菜单栏右键菜单始终提供 GitHub 手动下载入口。
-- **自动接入**：安装或升级后的首次启动检查 Codex Hooks，普通启动不检查；设置中可强制重新配置。首次使用仍需在 Codex 中审阅 Hooks。
+- **自动接入**：安装或升级后的首次启动检查 Codex 和 Claude Code 的 Hooks，普通启动不检查；设置中可分别强制重新配置。Codex 首次使用仍需审阅 Hooks；Claude Code 自动生效。
 - **产品信息**：Finder 和“关于”窗口使用蓝色伙伴图标；设置底部显示版本与构建号，并提供“关于”按钮。“关于”提供项目主页、问题反馈和第三方许可入口。设置中提供退出应用入口，支持 ⌘Q；也可在设置中开启开机启动。
 - **原生动效**：折叠伙伴汇总全部会话状态，显示运行数量；展开高度适配列表内容，收起与展开时保持顶部居中。伙伴随状态变化，支持系统“减少动态效果”设置。
 
@@ -63,11 +63,17 @@ Codex 要求首次审阅 Hooks：桌面端打开“设置 → Hooks”，CLI 运
 
 配置位置、开发回放和来源识别见 [接入指南](specs/CONNECT.md)。
 
+## 接入 Claude Code
+
+同一次检查也处理 Claude Code：检测到 `~/.claude`（或 `CLAUDE_CONFIG_DIR`）时，将本应用的 Hooks 合并进其中的 `settings.json`，保留其他设置和 Hooks，修改前保存备份。未检测到时不创建目录，设置中显示“未检测到”，可点击“一键配置”。Claude Code 会自动载入新的 Hooks，无需审阅，正在运行的会话也会开始上报。
+
+列表中的来源显示为“Claude Code”。打开会话时回到原终端标签页；找不到时在新标签页填入 `claude --resume` 命令。详情见 [接入指南](specs/CONNECT.md#接入-claude-code)。
+
 ### 当前接入边界
 
 CLI 的开始、结束、审批、提问、中断和等待解除已有本地真实接入记录。桌面端完整事件覆盖、所有终端组合与 Intel 实机运行尚未完成验证。无法唯一匹配的终端会话会显示反馈，不会随意打开同名标签页。
 
-内置桥不会从一次工具报错推断整轮失败；提问提醒取决于客户端是否发出相应 Hook。详情见 [真实接入记录](specs/LIVE-VERIFICATION.md) 与 [CLI 来源和导航](specs/CLI-SOURCE-FIX.md)。
+内置桥不会从一次工具报错推断整轮失败；提问提醒取决于客户端是否发出相应 Hook。Claude Code 没有中断 Hook：按 Esc 中断或拒绝授权后，状态保持到 Claude Code 报告输入空闲（约 60 秒）、会话结束或下一次提问。详情见 [真实接入记录](specs/LIVE-VERIFICATION.md) 与 [CLI 来源和导航](specs/CLI-SOURCE-FIX.md)。
 
 共享服务会话每 5 秒核对一次轮次状态，补回漏收的结束、中断或失败事件；修正不播报，也不会重新打开已关闭的提醒。独立 CLI 仍依赖 Hooks。范围与依据见 [运行状态修复记录](specs/RUNTIME-STATUS-FIX.md)。
 
@@ -75,7 +81,7 @@ CLI 的开始、结束、审批、提问、中断和等待解除已有本地真�
 
 状态、设置与事件保存在 `~/Library/Application Support/Codex Signal`。演示模式使用独立临时目录。右键菜单栏选择“打开数据目录”可查看本地文件。
 
-事件桥只写入本机；应用没有遥测或远程服务。保存的元数据可包含会话标题、项目名、工作目录和终端标识，因此仍可能包含业务信息；不保存提示正文或工具输入正文。调用关联使用标识和摘要。会话标题与来源由本地 Codex 元数据只读查询补全。
+事件桥只写入本机；应用没有遥测或远程服务。保存的元数据可包含会话标题、项目名、工作目录和终端标识，因此仍可能包含业务信息；不保存提示正文或工具输入正文。调用关联使用标识和摘要。Codex 会话标题与来源由本地 Codex 元数据只读查询补全；Claude Code 只使用 Hook 提供的自定义标题，不读取对话记录。
 
 ## 开发
 
@@ -106,7 +112,7 @@ python3 scripts/verify_runtime.py --check-speech
 
 ## 构建发布包
 
-版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.6.2（Build 9）**，“关于 Codex Signal”中可查看。
+版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.7.0（Build 10）**，“关于 Codex Signal”中可查看。
 
 ```sh
 ./script/release.sh

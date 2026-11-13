@@ -123,7 +123,7 @@ struct IslandView: View {
         guard let session = model.visibleSessions.first(where: { $0.id == model.selectedID }) else { return "打开" }
         switch SessionNavigator.plan(for: session).target {
         case .copyResume, .copyID: return "复制"
-        case .terminal, .terminalSession: return "打开"
+        case .terminal, .terminalSession, .recover: return "打开"
         case .codexThread: return "打开"
         }
     }
@@ -315,7 +315,7 @@ struct IslandView: View {
             Button(model.navigationTitle(for: session)) { model.openSource(session, feedbackAnchor: .row) }
                 .disabled(model.isNavigating)
             Button("复制会话标识") { model.copySessionID(session, feedbackAnchor: .row) }
-            if session.source == .cli, SessionNavigator.resumeCommand(for: session) != nil {
+            if session.source.isTerminalClient, SessionNavigator.resumeCommand(for: session) != nil {
                 Button("复制恢复命令") { model.copyResumeCommand(session, feedbackAnchor: .row) }
             }
             if session.unread { Button("标记已查看") { model.markSeen(session.id) } }
@@ -440,8 +440,13 @@ struct IslandView: View {
             Text(model.sessions.isEmpty ? "暂无会话" : model.sessionFilter.emptyTitle)
                 .font(.system(size: 13, weight: .medium))
             if model.sessions.isEmpty {
-                ConnectionSettingsView(connection: model.connection, isDemo: model.isDemo)
-                    .padding(.horizontal, 18)
+                VStack(alignment: .leading, spacing: 10) {
+                    ConnectionSettingsView(connection: model.connection, isDemo: model.isDemo)
+                    if model.claudeConnection.state != .unavailable {
+                        ConnectionSettingsView(connection: model.claudeConnection, isDemo: model.isDemo)
+                    }
+                }
+                .padding(.horizontal, 18)
             } else if model.sessionFilter != .all {
                 Button("查看全部") { withAnimation(motion) { model.sessionFilter = .all } }
                     .buttonStyle(.bordered)
@@ -565,6 +570,7 @@ struct IslandView: View {
                 Button("预览提醒") { model.previewIslandNotice() }
             }
             ConnectionSettingsView(connection: model.connection, isDemo: model.isDemo)
+            ConnectionSettingsView(connection: model.claudeConnection, isDemo: model.isDemo)
             Divider()
             HStack {
                 Text("首选终端")
@@ -774,9 +780,10 @@ private struct SourceAppearance {
 
     init(_ source: SessionSource) {
         switch source {
-        case .cli: title = "CLI"; symbol = "terminal"
-        case .desktop: title = "桌面版"; symbol = "desktopcomputer"
+        case .cli: title = "Codex CLI"; symbol = "terminal"
+        case .desktop: title = "Codex 桌面版"; symbol = "desktopcomputer"
         case .unknown: title = "Codex"; symbol = "desktopcomputer"
+        case .claude: title = "Claude Code"; symbol = "asterisk"
         }
     }
 }

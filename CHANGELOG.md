@@ -1,5 +1,14 @@
 # 更新记录
 
+## 0.7.0 · 2026-11-13
+
+Build 10，新增 Claude Code 支持。
+
+- 安装或升级后的首次启动检测 Claude Code，并将 Hooks 合并进 `settings.json`，保留其他设置，修改前保存备份；未安装时不创建配置目录，可在设置中一键配置。Codex 与 Claude Code 的接入状态分开显示。
+- 显示 Claude Code 会话的运行、待确认、待回答、本轮结束和运行失败；以 `prompt_id` 区分轮次，提问与授权按工具调用关联。Claude Code 报告输入空闲或会话结束时，收起未结束的轮次。
+- 打开 Claude Code 会话时回到原终端标签页，找不到时在新标签页填入 `claude --resume` 命令。
+- 列表来源改为“Codex CLI”“Codex 桌面版”“Claude Code”。Claude Code 提醒使用独立的 `claude-*.mp3` 语音。
+
 ## 0.6.2 · 2026-11-11
 
 Build 9，新增开机启动设置，并将退出入口集中到设置。

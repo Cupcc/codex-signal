@@ -7,6 +7,23 @@ struct HookInstallation: Codable, Sendable {
     let backupPath: String?
 }
 
+enum HookAgent: String, Sendable {
+    case codex, claude
+
+    var title: String { self == .codex ? "Codex" : "Claude Code" }
+    var receiptName: String { self == .codex ? "codex-connection.json" : "claude-connection.json" }
+    /// Codex asks the user to trust new hooks; Claude Code reloads its settings by itself.
+    var needsTrustReview: Bool { self == .codex }
+
+    func defaultHome(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
+        let variable = self == .codex ? "CODEX_HOME" : "CLAUDE_CONFIG_DIR"
+        if let path = environment[variable], !path.isEmpty {
+            return URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(self == .codex ? ".codex" : ".claude", isDirectory: true)
+    }
+}
+
 enum HookInstallationError: LocalizedError {
     case pythonRequired
     case failed(String)
@@ -19,9 +36,10 @@ enum HookInstallationError: LocalizedError {
     }
 }
 
-struct CodexHookInstaller: Sendable {
+struct HookInstaller: Sendable {
+    let agent: HookAgent
     let resources: URL?
-    let codexHome: URL
+    let home: URL
     let dataDirectory: URL
 
     func install(force: Bool) throws -> HookInstallation {
@@ -30,7 +48,7 @@ struct CodexHookInstaller: Sendable {
             throw HookInstallationError.failed("应用内的配置组件缺失，请重新安装 Codex Signal。")
         }
         let python = try findPython()
-        var arguments = ["-E", "-s", script.path, "--codex-home", codexHome.path, "--data-dir", dataDirectory.path]
+        var arguments = ["-E", "-s", script.path, "--agent", agent.rawValue, "--config-home", home.path, "--data-dir", dataDirectory.path]
         if force { arguments.append("--force") }
         let result = try Self.run(python, arguments: arguments, timeout: 15)
         guard result.status == 0 else {
@@ -79,29 +97,36 @@ struct CodexHookInstaller: Sendable {
 }
 
 @MainActor
-final class CodexConnection: ObservableObject {
+final class HookConnection: ObservableObject {
     enum State: Equatable {
-        case idle, configuring, configured, receiving, pythonRequired
+        case idle, configuring, configured, receiving, pythonRequired, unavailable
         case failed(String)
     }
 
     @Published private(set) var state: State = .idle
     @Published private(set) var installation: HookInstallation?
-    private let installer: CodexHookInstaller
+    let agent: HookAgent
+    private let installer: HookInstaller
     private let installationID: String
     private var task: Task<Void, Never>?
     private var receivedEventAt: Date?
 
     private struct Receipt: Codable {
         enum Outcome: Codable {
-            case pending, pythonRequired
+            case pending, pythonRequired, unavailable
             case installed(HookInstallation)
             case failed(String)
         }
         var schemaVersion = 1
         let installationID: String
-        let codexHome: String
+        let home: String
         let outcome: Outcome
+
+        // Receipts written before Claude Code support name the home after Codex.
+        private enum CodingKeys: String, CodingKey {
+            case schemaVersion, installationID, outcome
+            case home = "codexHome"
+        }
     }
 
     nonisolated static func installationIdentifier(for bundle: Bundle = .main) -> String {
@@ -115,15 +140,10 @@ final class CodexConnection: ObservableObject {
         return "\(bundle.bundleIdentifier ?? "CodexSignal")|\(version)|\(build)|\(device)|\(file)|\(created)"
     }
 
-    nonisolated static var defaultCodexHome: URL {
-        let path = ProcessInfo.processInfo.environment["CODEX_HOME"]
-        if let path, !path.isEmpty { return URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true) }
-        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex", isDirectory: true)
-    }
-
-    init(dataDirectory: URL, codexHome: URL = CodexConnection.defaultCodexHome, resources: URL? = Bundle.main.resourceURL,
-         installationID: String = CodexConnection.installationIdentifier()) {
-        installer = CodexHookInstaller(resources: resources, codexHome: codexHome, dataDirectory: dataDirectory)
+    init(agent: HookAgent = .codex, dataDirectory: URL, home: URL? = nil, resources: URL? = Bundle.main.resourceURL,
+         installationID: String = HookConnection.installationIdentifier()) {
+        self.agent = agent
+        installer = HookInstaller(agent: agent, resources: resources, home: home ?? agent.defaultHome(), dataDirectory: dataDirectory)
         self.installationID = installationID
     }
 
@@ -134,12 +154,13 @@ final class CodexConnection: ObservableObject {
         case .configured: return "已配置 · 等待事件"
         case .receiving: return "已接收事件"
         case .pythonRequired: return "需要 Python 3"
+        case .unavailable: return "未检测到"
         case .failed: return "配置失败"
         }
     }
 
     var isConfiguring: Bool { state == .configuring }
-    var needsReview: Bool { state == .configured }
+    var needsReview: Bool { state == .configured && agent.needsTrustReview }
 
     func configureAfterInstallation() {
         guard task == nil else { return }
@@ -152,10 +173,16 @@ final class CodexConnection: ObservableObject {
             }
             if let receipt {
                 guard receipt.schemaVersion == 1 else { throw CocoaError(.fileReadCorruptFile) }
-                if receipt.installationID == installationID, receipt.codexHome == installer.codexHome.standardizedFileURL.path {
+                if receipt.installationID == installationID, receipt.home == installer.home.standardizedFileURL.path {
                     restore(receipt.outcome)
                     return
                 }
+            }
+            // Never create a configuration directory for an agent the user has not run.
+            guard agent == .codex || FileManager.default.fileExists(atPath: installer.home.path) else {
+                try saveReceipt(.unavailable)
+                state = .unavailable
+                return
             }
             beginConfiguration(force: false)
         } catch {
@@ -165,10 +192,10 @@ final class CodexConnection: ObservableObject {
 
     func configure() { beginConfiguration(force: true) }
 
-    private var receiptURL: URL { installer.dataDirectory.appendingPathComponent("codex-connection.json") }
+    private var receiptURL: URL { installer.dataDirectory.appendingPathComponent(agent.receiptName) }
 
     private func saveReceipt(_ outcome: Receipt.Outcome) throws {
-        let receipt = Receipt(installationID: installationID, codexHome: installer.codexHome.standardizedFileURL.path, outcome: outcome)
+        let receipt = Receipt(installationID: installationID, home: installer.home.standardizedFileURL.path, outcome: outcome)
         try FileManager.default.createDirectory(at: installer.dataDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try JSONEncoder().encode(receipt).write(to: receiptURL, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: receiptURL.path)
@@ -181,6 +208,7 @@ final class CodexConnection: ObservableObject {
             self.installation = installation
             state = .configured
         case .pythonRequired: state = .pythonRequired
+        case .unavailable: state = .unavailable
         case .failed(let message): state = .failed(message)
         }
     }
@@ -227,6 +255,6 @@ final class CodexConnection: ObservableObject {
 
     func receivedEvent() {
         receivedEventAt = Date()
-        if state == .idle || state == .configured { state = .receiving }
+        if state == .idle || state == .configured || state == .unavailable { state = .receiving }
     }
 }

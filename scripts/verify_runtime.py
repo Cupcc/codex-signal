@@ -73,9 +73,11 @@ class RuntimeCheck:
         return validate_event({"schemaVersion": 1, "eventId": uuid.uuid4().hex, "source": "cli", "sessionId": session, "turnId": turn, "requestId": request, "project": "Runtime verification", "kind": kind, "occurredAt": self.timestamp, "isChild": False})
 
     def send(self, event):
+        previous = self.snapshot().get("lastIntake")
         write_event(event, self.directory)
-        self.wait(lambda _: not list((self.directory / "inbox").glob("*.json")), "inbox did not drain")
-        return self.snapshot()
+        # The app removes inbox files before it publishes the snapshot for that batch.
+        return self.wait(lambda value: not list((self.directory / "inbox").glob("*.json")) and value.get("lastIntake") != previous,
+                         "inbox did not drain")
 
     def row(self, value, session="runtime-main"):
         return next((row for row in value.get("sessions", []) if row["sessionId"] == session), {})

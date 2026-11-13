@@ -17,7 +17,7 @@ struct CodexConnectionTests {
         return (root, resources, root.appendingPathComponent("custom-codex"), root.appendingPathComponent("data"))
     }
 
-    private func finished(_ connection: CodexConnection) async throws {
+    private func finished(_ connection: HookConnection) async throws {
         for _ in 0..<500 {
             if !connection.isConfiguring { return }
             try await Task.sleep(for: .milliseconds(20))
@@ -27,7 +27,7 @@ struct CodexConnectionTests {
 
     @Test func missingComponentShowsRecoverableFailure() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let connection = CodexConnection(dataDirectory: directory, codexHome: directory, resources: nil)
+        let connection = HookConnection(dataDirectory: directory, home: directory, resources: nil)
         #expect(connection.state == .idle)
         connection.configure()
         connection.configure()
@@ -43,7 +43,7 @@ struct CodexConnectionTests {
     @Test func manualConfigurationAlwaysRebuildsAndWaitsForEvent() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root) }
-        let connection = CodexConnection(dataDirectory: f.data, codexHome: f.codex, resources: f.resources)
+        let connection = HookConnection(dataDirectory: f.data, home: f.codex, resources: f.resources)
         connection.configure()
         try await finished(connection)
         #expect(connection.state == .configured)
@@ -63,7 +63,7 @@ struct CodexConnectionTests {
     @Test func normalStartupRestoresReceiptWithoutInspectingOrRepairingHooks() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root) }
-        let installed = CodexConnection(dataDirectory: f.data, codexHome: f.codex, resources: f.resources, installationID: "install-a")
+        let installed = HookConnection(dataDirectory: f.data, home: f.codex, resources: f.resources, installationID: "install-a")
         installed.configureAfterInstallation()
         try await finished(installed)
         #expect(installed.state == .configured)
@@ -74,7 +74,7 @@ struct CodexConnectionTests {
         try FileManager.default.removeItem(at: hooks)
         try FileManager.default.removeItem(at: f.data.appendingPathComponent("Bridge"))
 
-        let relaunched = CodexConnection(dataDirectory: f.data, codexHome: f.codex, resources: nil, installationID: "install-a")
+        let relaunched = HookConnection(dataDirectory: f.data, home: f.codex, resources: nil, installationID: "install-a")
         relaunched.configureAfterInstallation()
 
         #expect(!relaunched.isConfiguring)
@@ -89,20 +89,20 @@ struct CodexConnectionTests {
     @Test func reinstallChecksOnceAndNextStartupSkipsInstaller() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root) }
-        let original = CodexConnection(dataDirectory: f.data, codexHome: f.codex, resources: f.resources, installationID: "install-a")
+        let original = HookConnection(dataDirectory: f.data, home: f.codex, resources: f.resources, installationID: "install-a")
         original.configureAfterInstallation()
         try await finished(original)
         let hooks = f.codex.appendingPathComponent("hooks.json")
         try FileManager.default.removeItem(at: hooks)
 
-        let reinstalled = CodexConnection(dataDirectory: f.data, codexHome: f.codex, resources: f.resources, installationID: "install-b")
+        let reinstalled = HookConnection(dataDirectory: f.data, home: f.codex, resources: f.resources, installationID: "install-b")
         reinstalled.configureAfterInstallation()
         #expect(reinstalled.isConfiguring)
         try await finished(reinstalled)
         #expect(reinstalled.state == .configured)
         #expect(FileManager.default.fileExists(atPath: hooks.path))
 
-        let relaunched = CodexConnection(dataDirectory: f.data, codexHome: f.codex, resources: nil, installationID: "install-b")
+        let relaunched = HookConnection(dataDirectory: f.data, home: f.codex, resources: nil, installationID: "install-b")
         relaunched.configureAfterInstallation()
         #expect(relaunched.state == .configured)
         #expect(!relaunched.isConfiguring)
@@ -111,14 +111,14 @@ struct CodexConnectionTests {
     @Test func installationWithUnchangedBridgeKeepsExistingConfiguration() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root) }
-        let original = CodexConnection(dataDirectory: f.data, codexHome: f.codex, resources: f.resources, installationID: "install-a")
+        let original = HookConnection(dataDirectory: f.data, home: f.codex, resources: f.resources, installationID: "install-a")
         original.configureAfterInstallation()
         try await finished(original)
         let hooks = f.codex.appendingPathComponent("hooks.json")
         let before = try Data(contentsOf: hooks)
         let modified = try hooks.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
 
-        let upgraded = CodexConnection(dataDirectory: f.data, codexHome: f.codex, resources: f.resources, installationID: "install-b")
+        let upgraded = HookConnection(dataDirectory: f.data, home: f.codex, resources: f.resources, installationID: "install-b")
         upgraded.configureAfterInstallation()
         #expect(upgraded.isConfiguring)
         try await finished(upgraded)
@@ -133,13 +133,13 @@ struct CodexConnectionTests {
     @Test func failedInstallationWaitsForManualRetryAcrossRestarts() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root) }
-        let failed = CodexConnection(dataDirectory: f.data, codexHome: f.codex, resources: nil, installationID: "install-a")
+        let failed = HookConnection(dataDirectory: f.data, home: f.codex, resources: nil, installationID: "install-a")
         failed.configureAfterInstallation()
         try await finished(failed)
         guard case .failed = failed.state else { Issue.record("Expected component failure"); return }
         let receipt = try Data(contentsOf: f.data.appendingPathComponent("codex-connection.json"))
 
-        let relaunched = CodexConnection(dataDirectory: f.data, codexHome: f.codex, resources: f.resources, installationID: "install-a")
+        let relaunched = HookConnection(dataDirectory: f.data, home: f.codex, resources: f.resources, installationID: "install-a")
         relaunched.configureAfterInstallation()
         #expect(relaunched.state == failed.state)
         #expect(!relaunched.isConfiguring)
@@ -158,7 +158,7 @@ struct CodexConnectionTests {
         let receipt: [String: Any] = ["schemaVersion": 1, "installationID": "install-a", "codexHome": f.codex.standardizedFileURL.path,
                                       "outcome": ["pending": [:]]]
         try JSONSerialization.data(withJSONObject: receipt).write(to: f.data.appendingPathComponent("codex-connection.json"))
-        let connection = CodexConnection(dataDirectory: f.data, codexHome: f.codex, resources: f.resources, installationID: "install-a")
+        let connection = HookConnection(dataDirectory: f.data, home: f.codex, resources: f.resources, installationID: "install-a")
         connection.configureAfterInstallation()
         #expect(connection.state == .failed("上次配置未完成，请重试。"))
         #expect(!connection.isConfiguring)
@@ -179,27 +179,63 @@ struct CodexConnectionTests {
         try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
             .write(to: app.appendingPathComponent("Contents/Info.plist"))
         try Data("original".utf8).write(to: executable)
-        let initial = CodexConnection.installationIdentifier(for: try #require(Bundle(url: app)))
-        #expect(CodexConnection.installationIdentifier(for: try #require(Bundle(url: app))) == initial)
+        let initial = HookConnection.installationIdentifier(for: try #require(Bundle(url: app)))
+        #expect(HookConnection.installationIdentifier(for: try #require(Bundle(url: app))) == initial)
         let moved = root.appendingPathComponent("Moved.app")
         try FileManager.default.moveItem(at: app, to: moved)
         let bundle = try #require(Bundle(url: moved))
-        #expect(CodexConnection.installationIdentifier(for: bundle) == initial)
+        #expect(HookConnection.installationIdentifier(for: bundle) == initial)
         let replacement = root.appendingPathComponent("replacement")
         try Data("same version reinstalled".utf8).write(to: replacement)
         let movedExecutable = moved.appendingPathComponent("Contents/MacOS/CodexSignal")
         try FileManager.default.removeItem(at: movedExecutable)
         try FileManager.default.moveItem(at: replacement, to: movedExecutable)
-        #expect(CodexConnection.installationIdentifier(for: bundle) != initial)
+        #expect(HookConnection.installationIdentifier(for: bundle) != initial)
     }
 
     @Test func configurationDoesNotClaimAnEventWasReceived() {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let connection = CodexConnection(dataDirectory: directory, codexHome: directory, resources: nil)
+        let connection = HookConnection(dataDirectory: directory, home: directory, resources: nil)
         #expect(connection.status == "尚未配置")
         #expect(!connection.needsReview)
         connection.receivedEvent()
         #expect(connection.status == "已接收事件")
         #expect(!FileManager.default.fileExists(atPath: directory.path))
+    }
+
+    @Test func claudeSetupSkipsMissingHomeUntilRequested() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root) }
+        let home = f.root.appendingPathComponent("claude-home")
+        let connection = HookConnection(agent: .claude, dataDirectory: f.data, home: home, resources: f.resources, installationID: "install-a")
+        connection.configureAfterInstallation()
+        #expect(connection.state == .unavailable)
+        #expect(!FileManager.default.fileExists(atPath: home.path))
+        #expect(FileManager.default.fileExists(atPath: f.data.appendingPathComponent("claude-connection.json").path))
+        #expect(!FileManager.default.fileExists(atPath: f.data.appendingPathComponent("codex-connection.json").path))
+        let relaunched = HookConnection(agent: .claude, dataDirectory: f.data, home: home, resources: nil, installationID: "install-a")
+        relaunched.configureAfterInstallation()
+        #expect(relaunched.state == .unavailable)
+        connection.configure()
+        try await finished(connection)
+        #expect(connection.state == .configured)
+        #expect(!connection.needsReview)
+        #expect(connection.installation?.hooksPath == home.appendingPathComponent("settings.json").path)
+    }
+
+    @Test func claudeSetupMergesIntoExistingSettings() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root) }
+        let home = f.root.appendingPathComponent("claude-home")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try Data(#"{"model":"opus"}"#.utf8).write(to: home.appendingPathComponent("settings.json"))
+        let connection = HookConnection(agent: .claude, dataDirectory: f.data, home: home, resources: f.resources, installationID: "install-a")
+        connection.configureAfterInstallation()
+        try await finished(connection)
+        #expect(connection.state == .configured)
+        let settings = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: home.appendingPathComponent("settings.json"))) as? [String: Any])
+        #expect(settings["model"] as? String == "opus")
+        #expect((settings["hooks"] as? [String: Any])?["PermissionRequest"] != nil)
+        #expect(!FileManager.default.fileExists(atPath: f.codex.path))
     }
 }

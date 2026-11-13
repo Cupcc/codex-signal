@@ -6,7 +6,8 @@ import sqlite3
 import stat
 
 
-EVENTS = {"PreToolUse", "PermissionRequest", "PostToolUse", "UserPromptSubmit", "Stop", "Interrupt"}
+# StopFailure and SessionEnd only arrive from Claude Code; both end the turn like Stop.
+EVENTS = {"PreToolUse", "PermissionRequest", "PostToolUse", "UserPromptSubmit", "Stop", "Interrupt", "StopFailure", "SessionEnd"}
 
 
 def _identifier(value, limit=512):
@@ -94,7 +95,7 @@ def enrich_hook(raw, source, data_dir):
     name = raw.get("hook_event_name")
     session = raw.get("session_id")
     turn = raw.get("turn_id")
-    if source not in {"auto", "cli", "desktop", "unknown"} or name not in EVENTS or not _identifier(session) or not _identifier(turn):
+    if source not in {"auto", "cli", "desktop", "unknown", "claude"} or name not in EVENTS or not _identifier(session) or not _identifier(turn):
         return result
     connection = None
     recording_pre = False

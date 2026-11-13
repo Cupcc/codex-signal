@@ -7,6 +7,10 @@ enum VoiceClip: String, CaseIterable {
     case question = "codex-question"
     case failed = "codex-failed"
     case completed = "codex-completed"
+    case claudeApproval = "claude-approval"
+    case claudeQuestion = "claude-question"
+    case claudeFailed = "claude-failed"
+    case claudeCompleted = "claude-completed"
 
     var phrase: String {
         switch self {
@@ -14,6 +18,10 @@ enum VoiceClip: String, CaseIterable {
         case .question: return "Codex 等待回答。"
         case .failed: return "Codex 运行失败。"
         case .completed: return "Codex 本轮已结束。"
+        case .claudeApproval: return "Claude 需要确认。"
+        case .claudeQuestion: return "Claude 等待回答。"
+        case .claudeFailed: return "Claude 运行失败。"
+        case .claudeCompleted: return "Claude 本轮已结束。"
         }
     }
 
@@ -38,11 +46,12 @@ struct VoicePolicy {
     }
 
     static func clip(for event: SignalEvent) -> VoiceClip? {
+        let claude = event.source == .claude
         switch event.kind {
-        case .approval: return .approval
-        case .question: return .question
-        case .failed: return .failed
-        case .completed: return event.isChild ? nil : .completed
+        case .approval: return claude ? .claudeApproval : .approval
+        case .question: return claude ? .claudeQuestion : .question
+        case .failed: return claude ? .claudeFailed : .failed
+        case .completed: return event.isChild ? nil : (claude ? .claudeCompleted : .completed)
         default: return nil
         }
     }

@@ -137,4 +137,15 @@ struct MessageIntakeTests {
         try await Task.sleep(for: .seconds(duration + 0.3))
         #expect(try speechCount(model) == 1)
     }
+
+    @Test func claudeEventsReachOnlyTheClaudeConnection() throws {
+        let model = model()
+        defer { try? FileManager.default.removeItem(at: model.dataDirectory) }
+        try send([event(.approval, source: .claude, request: "tool:a", time: Date().timeIntervalSince1970)], to: model)
+        #expect(model.sessions.map(\.id) == ["claude:thread"])
+        #expect(model.pendingCount == 1)
+        #expect(model.islandNotice?.primary.source == .claude)
+        #expect(model.claudeConnection.state == .receiving)
+        #expect(model.connection.state == .idle)
+    }
 }

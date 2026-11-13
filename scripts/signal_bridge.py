@@ -22,10 +22,14 @@ from request_correlation import enrich_hook
 
 MAX_INPUT = 1024 * 1024
 MAX_EVENT = 64 * 1024
-SOURCES = {"cli", "desktop", "unknown"}
+SOURCES = {"cli", "desktop", "unknown", "claude"}
 KINDS = {"started", "approval", "question", "resumed", "completed", "failed", "stopped", "disconnected"}
 FIELDS = {"schemaVersion", "eventId", "source", "sessionId", "turnId", "requestId", "project", "kind", "occurredAt", "isChild", "title", "cwd", "terminalTTY", "terminalBundleID"}
 HOOKS = ("UserPromptSubmit", "PermissionRequest", "PreToolUse", "PostToolUse", "Stop", "Interrupt")
+# Claude Code has no interrupt hook. An idle prompt or a session end is its only evidence
+# that an unfinished turn stopped; Notification otherwise fires for unrelated UI messages.
+CLAUDE_HOOKS = ("UserPromptSubmit", "PreToolUse", "PermissionRequest", "PostToolUse", "Stop", "StopFailure", "Notification", "SessionEnd")
+CLAUDE_MATCHERS = {"Notification": "idle_prompt"}
 DEFAULT_DATA_DIR = Path.home() / "Library" / "Application Support" / "Codex Signal"
 
 
@@ -77,7 +81,7 @@ def process_record(pid):
     if result.returncode or len(fields) != 2:
         return None
     arguments = fields[1]
-    if Path(fields[1]).name == "codex":
+    if Path(fields[1]).name in {"codex", "node"}:
         args = subprocess.run(["/bin/ps", "-p", str(pid), "-o", "args="], capture_output=True, text=True, timeout=0.2)
         if args.returncode:
             return None
@@ -100,6 +104,14 @@ def classify_process(executable, arguments, parent_executable, desktop_bundle_id
     if parent.parent.name == "MacOS" and parent.parent.parent.name == "Contents" and desktop_bundle_id == "com.openai.codex":
         return "desktop"
     return "unknown"
+
+
+def is_claude_process(executable, arguments):
+    path = Path(executable)
+    if path.name == "claude" or (path.parent.name == "versions" and path.parent.parent.name == "claude"):
+        return True
+    # npm installs run the CLI script under node.
+    return path.name == "node" and ("@anthropic-ai/claude-code" in arguments or "/claude " in arguments + " ")
 
 
 def detect_source():
@@ -237,21 +249,22 @@ def resolve_source(process_source, raw):
     return "unknown"
 
 
-def terminal_metadata():
+def terminal_metadata(agent="codex"):
     """Identify only a CLI's inherited terminal; never inspect process environment or transcript."""
     result = {}
     pid = os.getppid()
-    found_codex = False
+    found_agent = False
     for _ in range(12):
         record = process_record(pid)
         if record is None:
             break
         parent_pid, executable, arguments = record
-        if Path(executable).name == "codex" and not found_codex:
+        is_agent = is_claude_process(executable, arguments) if agent == "claude" else Path(executable).name == "codex"
+        if is_agent and not found_agent:
             # A daemon's terminal/environment belongs to the service, not its client.
-            if classify_process(executable, arguments, "") != "cli":
+            if agent == "codex" and classify_process(executable, arguments, "") != "cli":
                 return {}
-            found_codex = True
+            found_agent = True
             tty = subprocess.run(["/bin/ps", "-p", str(pid), "-o", "tty="], capture_output=True, text=True, timeout=0.2)
             value = tty.stdout.strip()
             value = value if value.startswith("/dev/") else "/dev/" + value
@@ -270,7 +283,7 @@ def terminal_metadata():
         if parent_pid <= 1 or parent_pid == pid:
             break
         pid = parent_pid
-    if not found_codex:
+    if not found_agent:
         return {}
     if "terminalBundleID" not in result:
         bundle_id = {"Apple_Terminal": "com.apple.Terminal", "iTerm.app": "com.googlecode.iterm2",
@@ -284,12 +297,13 @@ def terminal_metadata():
 def enrich_metadata(event, raw):
     title = next((title for key in ("session_title", "thread_title", "title")
                   if (title := normalized_title(raw.get(key))) is not None), None)
-    title = title or codex_title(event["sessionId"]) or codex_database_title(event["sessionId"])
+    if event["source"] != "claude":
+        title = title or codex_title(event["sessionId"]) or codex_database_title(event["sessionId"])
     if title:
         event["title"] = title
-    if event["source"] == "cli":
+    if event["source"] in {"cli", "claude"}:
         try:
-            event.update(terminal_metadata())
+            event.update(terminal_metadata("claude" if event["source"] == "claude" else "codex"))
         except (OSError, ValueError, subprocess.SubprocessError):
             pass
     return validate_event(event)
@@ -319,6 +333,43 @@ def record_diagnostic(raw, event, data_dir, source, error=None):
         os.close(fd)
 
 
+def claude_turn(raw):
+    """Claude Code identifies a turn by its prompt; there is none before the first prompt."""
+    result = {key: value for key, value in raw.items() if key != "turn_id"}
+    if raw.get("prompt_id") is not None:
+        result["turn_id"] = raw["prompt_id"]
+    return result
+
+
+def codex_kind(raw):
+    name = raw.get("hook_event_name")
+    direct = {"UserPromptSubmit": "started", "PermissionRequest": "approval", "Stop": "completed", "Interrupt": "stopped", "SessionEnd": "disconnected"}
+    if name in direct:
+        return direct[name]
+    if name == "PreToolUse" and raw.get("tool_name") in {"request_user_input", "request_user_input_async"}:
+        return "question"
+    if name == "PostToolUse" and raw.get("tool_name") == "request_user_input_async":
+        # This tool returns after posting the question, before the user answers.
+        return None
+    if name == "PostToolUse" and raw.get("tool_use_id"):
+        return "resumed"
+    return None
+
+
+def claude_kind(raw):
+    name = raw.get("hook_event_name")
+    # AskUserQuestion also passes through the permission dialog; both shapes share one request ID.
+    if name in {"PreToolUse", "PermissionRequest"} and raw.get("tool_name") == "AskUserQuestion":
+        return "question"
+    if name == "PostToolUse":
+        # The question tool returns only after the user answers.
+        return "resumed" if raw.get("tool_use_id") else None
+    if name == "Notification":
+        return "stopped" if raw.get("notification_type") == "idle_prompt" else None
+    return {"UserPromptSubmit": "started", "PermissionRequest": "approval", "Stop": "completed",
+            "StopFailure": "failed", "SessionEnd": "stopped"}.get(name)
+
+
 def normalize(raw, mode, source, now=None):
     if mode == "event":
         return validate_event(raw)
@@ -332,18 +383,8 @@ def normalize(raw, mode, source, now=None):
             return None
         kind, session, turn = "completed", raw.get("thread-id"), raw.get("turn-id")
     else:
-        name = raw.get("hook_event_name")
-        direct = {"UserPromptSubmit": "started", "PermissionRequest": "approval", "Stop": "completed", "Interrupt": "stopped", "SessionEnd": "disconnected"}
-        if name in direct:
-            kind = direct[name]
-        elif name == "PreToolUse" and raw.get("tool_name") in {"request_user_input", "request_user_input_async"}:
-            kind = "question"
-        elif name == "PostToolUse" and raw.get("tool_name") == "request_user_input_async":
-            # This tool returns after posting the question, before the user answers.
-            return None
-        elif name == "PostToolUse" and raw.get("tool_use_id"):
-            kind = "resumed"
-        else:
+        kind = claude_kind(raw) if source == "claude" else codex_kind(raw)
+        if kind is None or (source == "claude" and raw.get("turn_id") is None):
             return None
         session, turn = raw.get("session_id"), raw.get("turn_id")
         if kind in {"approval", "question", "resumed"}:
@@ -428,7 +469,14 @@ def hooks_config(source, data_dir):
     if source not in SOURCES | {"auto"}:
         raise ValueError("--source is required for --print-hooks")
     command = shlex.join([sys.executable, str(Path(__file__).resolve()), "--input", "hook", "--source", source, "--data-dir", str(data_dir.absolute())])
-    return {"hooks": {name: [{"hooks": [{"type": "command", "command": command, "timeout": 3}]}] for name in HOOKS}}
+    return {"hooks": {name: [hook_group(name, command, source == "claude")] for name in (CLAUDE_HOOKS if source == "claude" else HOOKS)}}
+
+
+def hook_group(name, command, claude=False):
+    group = {"hooks": [{"type": "command", "command": command, "timeout": 3}]}
+    if claude and name in CLAUDE_MATCHERS:
+        group = {"matcher": CLAUDE_MATCHERS[name], **group}
+    return group
 
 
 def main():
@@ -457,6 +505,8 @@ def main():
         if len(data) > MAX_INPUT:
             raise ValueError("input exceeds 1 MiB")
         raw = json.loads(data, parse_constant=lambda _: (_ for _ in ()).throw(ValueError("non-finite JSON number")))
+        if args.input == "hook" and source == "claude" and isinstance(raw, dict):
+            raw = claude_turn(raw)
         correlation_source = source
         if source == "auto":
             try:

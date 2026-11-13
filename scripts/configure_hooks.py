@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install Codex Signal's receiver and merge its user-level hooks."""
+"""Install Codex Signal's receiver and merge its user-level Codex or Claude Code hooks."""
 import argparse
 import fcntl
 import hashlib
@@ -13,14 +13,20 @@ import tempfile
 import uuid
 
 sys.dont_write_bytecode = True
-from signal_bridge import HOOKS
+from signal_bridge import CLAUDE_HOOKS, HOOKS, hook_group
 
 BRIDGE_FILES = ("signal_bridge.py", "request_correlation.py")
+# Claude Code keeps hooks inside settings.json alongside unrelated user settings.
+AGENTS = {
+    "codex": {"file": "hooks.json", "events": HOOKS, "sources": {"auto", "cli", "desktop", "unknown"}},
+    "claude": {"file": "settings.json", "events": CLAUDE_HOOKS, "sources": {"claude"}},
+}
 
 
 def read_config(path):
+    name = path.name
     if path.is_symlink():
-        raise ValueError("hooks.json 是符号链接，请在实际配置目录中重试。")
+        raise ValueError(name + " 是符号链接，请在实际配置目录中重试。")
     try:
         original = path.read_bytes()
     except FileNotFoundError:
@@ -28,16 +34,16 @@ def read_config(path):
     try:
         config = json.loads(original)
     except (ValueError, UnicodeError):
-        raise ValueError("hooks.json 格式有误，修复后可重新配置。原文件未修改。")
+        raise ValueError(name + " 格式有误，修复后可重新配置。原文件未修改。")
     if not isinstance(config, dict) or not isinstance(config.get("hooks", {}), dict):
-        raise ValueError("hooks.json 的 hooks 必须是对象。原文件未修改。")
+        raise ValueError(name + " 的 hooks 必须是对象。原文件未修改。")
     for groups in config.get("hooks", {}).values():
         if not isinstance(groups, list) or any(not isinstance(group, dict) or not isinstance(group.get("hooks", []), list) for group in groups):
-            raise ValueError("hooks.json 的事件格式有误。原文件未修改。")
+            raise ValueError(name + " 的事件格式有误。原文件未修改。")
     return original, config
 
 
-def signal_hook_arguments(handler):
+def signal_hook_arguments(handler, sources=AGENTS["codex"]["sources"]):
     if not isinstance(handler, dict) or handler.get("type") != "command":
         return None
     command = handler.get("command")
@@ -51,17 +57,18 @@ def signal_hook_arguments(handler):
     # by older releases. Leave wrappers and unrelated commands alone.
     if (len(args) == 8 and Path(args[1]).name == "signal_bridge.py"
             and args[2:5] == ["--input", "hook", "--source"]
-            and args[5] in {"auto", "cli", "desktop", "unknown"}
+            and args[5] in sources
             and args[6] == "--data-dir"):
         return args
     return None
 
 
-def is_signal_hook(handler):
-    return signal_hook_arguments(handler) is not None
+def is_signal_hook(handler, sources=AGENTS["codex"]["sources"]):
+    return signal_hook_arguments(handler, sources) is not None
 
 
-def merge_hooks(config, command, force=False):
+def merge_hooks(config, command, force=False, agent="codex"):
+    spec = AGENTS[agent]
     merged = dict(config)
     events = dict(config.get("hooks", {}))
     if force:
@@ -69,21 +76,21 @@ def merge_hooks(config, command, force=False):
             kept = []
             for group in groups:
                 handlers = group.get("hooks", [])
-                remaining = [handler for handler in handlers if not is_signal_hook(handler)]
+                remaining = [handler for handler in handlers if not is_signal_hook(handler, spec["sources"])]
                 if remaining == handlers:
                     kept.append(group)
                 elif remaining:
                     kept.append(dict(group, hooks=remaining))
             events[name] = kept
     target = shlex.split(command)
-    for name in HOOKS:
+    for name in spec["events"]:
         groups = []
         found = False
         for group in events.get(name, []):
             handlers = group.get("hooks", [])
             updated = []
             for handler in handlers:
-                existing = signal_hook_arguments(handler)
+                existing = signal_hook_arguments(handler, spec["sources"])
                 if existing is not None:
                     found = True
                     # The installed script's content-addressed path identifies
@@ -96,10 +103,11 @@ def merge_hooks(config, command, force=False):
                 updated.append(handler)
             groups.append(group if updated == handlers else dict(group, hooks=updated))
         if not found:
-            groups.append({"hooks": [{
-                "type": "command", "command": command, "timeout": 3,
-                "statusMessage": "Codex Signal",
-            }]})
+            group = hook_group(name, command, agent == "claude")
+            if agent == "codex":
+                # Claude Code would show this on its spinner for every tool call.
+                group["hooks"][0]["statusMessage"] = "Codex Signal"
+            groups.append(group)
         events[name] = groups
     merged["hooks"] = events
     return merged
@@ -136,26 +144,29 @@ def install_bridge(source, data_dir, force=False):
     return directory / "signal_bridge.py"
 
 
-def configure(codex_home, data_dir, source=None, force=False):
+def configure(codex_home, data_dir, source=None, force=False, agent="codex"):
     codex_home, data_dir = codex_home.expanduser().absolute(), data_dir.expanduser().absolute()
+    spec = AGENTS[agent]
+    product = "Claude Code" if agent == "claude" else "Codex"
     codex_home.mkdir(mode=0o700, parents=True, exist_ok=True)
     descriptor = os.open(codex_home / ".codex-signal.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-            raise ValueError("无法锁定 Codex 配置，请重试。")
+            raise ValueError("无法锁定 " + product + " 配置，请重试。")
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        path = codex_home / "hooks.json"
+        path = codex_home / spec["file"]
         original, config = read_config(path)
         bridge = install_bridge(source or Path(__file__).parent, data_dir, force)
-        command = shlex.join([sys.executable, str(bridge), "--input", "hook", "--source", "auto", "--data-dir", str(data_dir)])
-        merged = merge_hooks(config, command, force)
+        receiver = "claude" if agent == "claude" else "auto"
+        command = shlex.join([sys.executable, str(bridge), "--input", "hook", "--source", receiver, "--data-dir", str(data_dir)])
+        merged = merge_hooks(config, command, force, agent)
         backup = None
         changed = force or merged != config
         if changed:
             if read_config(path)[0] != original:
-                raise ValueError("Codex 配置刚刚发生变化，请重试。")
+                raise ValueError(product + " 配置刚刚发生变化，请重试。")
             if original is not None:
-                backup = codex_home / ("hooks.json.codex-signal-backup-" + uuid.uuid4().hex)
+                backup = codex_home / (spec["file"] + ".codex-signal-backup-" + uuid.uuid4().hex)
                 with open(backup, "xb") as output:
                     os.chmod(backup, 0o600)
                     output.write(original)
@@ -167,12 +178,14 @@ def configure(codex_home, data_dir, source=None, force=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--codex-home", type=Path, required=True)
+    parser.add_argument("--agent", choices=sorted(AGENTS), default="codex")
+    parser.add_argument("--config-home", "--codex-home", dest="config_home", type=Path, required=True,
+                        help="Codex home or Claude Code configuration directory")
     parser.add_argument("--data-dir", type=Path, required=True)
     parser.add_argument("--force", action="store_true", help="rebuild Codex Signal hooks and reinstall its bridge")
     args = parser.parse_args()
     try:
-        print(json.dumps(configure(args.codex_home, args.data_dir, force=args.force), ensure_ascii=False))
+        print(json.dumps(configure(args.config_home, args.data_dir, force=args.force, agent=args.agent), ensure_ascii=False))
         return 0
     except (OSError, ValueError) as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False))

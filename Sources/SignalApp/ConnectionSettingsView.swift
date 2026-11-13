@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct ConnectionSettingsView: View {
-    @ObservedObject var connection: CodexConnection
+    @ObservedObject var connection: HookConnection
     var isDemo = false
     @State private var showsDetails = false
 
@@ -14,15 +14,15 @@ struct ConnectionSettingsView: View {
                 } else {
                     Image(systemName: symbol).foregroundStyle(connection.state == .receiving ? .green : .secondary)
                 }
-                Text("Codex").fontWeight(.medium)
+                Text(title).fontWeight(.medium)
                 Text(isDemo ? "演示模式" : connection.status)
                     .foregroundStyle(.secondary)
                     .font(.caption)
-                    .accessibilityLabel("Codex 接入状态：\(isDemo ? "演示模式" : connection.status)")
+                    .accessibilityLabel("\(title) 接入状态：\(isDemo ? "演示模式" : connection.status)")
                 Spacer(minLength: 4)
                 Button(actionTitle) { connection.configure() }
                     .disabled(isDemo || connection.isConfiguring)
-                    .help(isDemo ? "演示模式不修改 Codex 配置" : "重建 Codex Signal 的 Hooks，保留其他 Hooks")
+                    .help(isDemo ? "演示模式不修改 \(title) 配置" : "重建本应用的 \(title) Hooks，保留其他 Hooks")
             }
             if !isDemo {
                 if connection.needsReview {
@@ -62,12 +62,14 @@ struct ConnectionSettingsView: View {
         }
     }
 
+    private var title: String { connection.agent.title }
+
     private var actionTitle: String {
         switch connection.state {
         case .configured, .receiving: return "重新配置"
         case .configuring: return "配置中…"
         case .failed, .pythonRequired: return "重试"
-        case .idle: return "一键配置"
+        case .idle, .unavailable: return "一键配置"
         }
     }
 

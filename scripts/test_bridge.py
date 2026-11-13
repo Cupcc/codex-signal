@@ -363,5 +363,87 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(before, (self.config.read_bytes(), self.hooks.read_bytes()))
 
 
+    def claude(self, name, turn="p-1", **extra):
+        value = dict(hook_event_name=name, session_id="c-a", cwd="/private/example/Atlas", transcript_path="/private/SECRET_TRANSCRIPT.jsonl", **extra)
+        if turn is not None:
+            value["prompt_id"] = turn
+        return value
+
+    def claude_events(self):
+        return sorted(self.events(), key=lambda event: event["occurredAt"])
+
+    def test_claude_lifecycle_uses_prompt_id_as_turn(self):
+        for payload in [self.claude("SessionStart", turn=None, source="startup"),
+                        self.claude("UserPromptSubmit", prompt="SECRET_PROMPT", session_title="发布说明"),
+                        self.claude("Notification", notification_type="permission_prompt", message="Claude needs your permission"),
+                        self.claude("Stop", last_assistant_message="SECRET_REPLY")]:
+            result = self.run_bridge(payload, source="claude")
+            self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
+        events = self.claude_events()
+        self.assertEqual([event["kind"] for event in events], ["started", "completed"])
+        self.assertEqual({(event["source"], event["sessionId"], event["turnId"], event["project"]) for event in events},
+                         {("claude", "c-a", "p-1", "Atlas")})
+        self.assertEqual(events[0]["title"], "发布说明")
+        serialized = json.dumps(events)
+        for secret in ("SECRET_PROMPT", "SECRET_REPLY", "SECRET_TRANSCRIPT"):
+            self.assertNotIn(secret, serialized)
+
+    def test_claude_permission_and_question_resolve_by_tool_call(self):
+        bash = {"tool_name": "Bash", "tool_input": {"command": "rm -rf build", "description": "Clean"}}
+        ask = {"tool_name": "AskUserQuestion", "tool_input": {"questions": [{"question": "Which layout?"}]}}
+        for name, extra in [("PreToolUse", dict(bash, tool_use_id="toolu_a")), ("PermissionRequest", bash),
+                            ("PostToolUse", dict(bash, tool_use_id="toolu_a")), ("PreToolUse", dict(ask, tool_use_id="toolu_b")),
+                            ("PermissionRequest", ask), ("PostToolUse", dict(ask, tool_use_id="toolu_b"))]:
+            self.run_bridge(self.claude(name, **extra), source="claude")
+        events = self.claude_events()
+        self.assertEqual([(event["kind"], event["requestId"]) for event in events],
+                         [("approval", "tool:toolu_a"), ("resumed", "tool:toolu_a"), ("question", "tool:toolu_b"),
+                          ("question", "tool:toolu_b"), ("resumed", "tool:toolu_b")])
+        # The question's permission dialog is the same request, not a second one.
+        self.assertEqual(events[2]["eventId"], events[3]["eventId"])
+        self.assertNotIn("rm -rf", json.dumps(events))
+
+    def test_claude_turn_endings_without_interrupt_hook(self):
+        cases = [("StopFailure", {"error": "rate_limit"}, "failed"), ("Notification", {"notification_type": "idle_prompt"}, "stopped"),
+                 ("SessionEnd", {"reason": "prompt_input_exit"}, "stopped")]
+        for index, (name, extra, _) in enumerate(cases):
+            self.run_bridge(self.claude(name, turn="p-" + str(index), **extra), source="claude")
+        self.assertEqual([event["kind"] for event in self.claude_events()], [kind for _, _, kind in cases])
+        result = self.run_bridge(self.claude("SessionEnd", turn=None, reason="other"), source="claude")
+        self.assertEqual((result.returncode, result.stderr), (0, ""))
+        self.assertEqual(len(self.events()), 3)
+
+    def test_claude_never_reads_codex_titles(self):
+        (self.fake_home / ".codex" / "session_index.jsonl").write_text(
+            json.dumps({"id": "c-a", "thread_name": "Codex 标题", "updated_at": "2026-01-01T00:00:00Z"}) + "\n")
+        self.run_bridge(self.claude("Stop"), source="claude")
+        self.assertNotIn("title", self.events()[0])
+
+    def test_claude_terminal_metadata_uses_claude_process_tty(self):
+        from signal_bridge import terminal_metadata
+        result = subprocess.CompletedProcess([], 0, stdout="ttys013\n", stderr="")
+        for agent_record in [(42, "claude", "claude"), (42, "/usr/local/bin/node", "node /usr/local/bin/claude --resume x")]:
+            records = [agent_record, (1, "/bin/zsh", "zsh")]
+            with patch("signal_bridge.process_record", side_effect=records), patch("signal_bridge.subprocess.run", return_value=result), \
+                    patch.dict(os.environ, {"TERM_PROGRAM": "ghostty"}):
+                self.assertEqual(terminal_metadata("claude"), {"terminalTTY": "/dev/ttys013", "terminalBundleID": "com.mitchellh.ghostty"})
+        # A Codex receiver must not mistake Claude Code for its own CLI, and vice versa.
+        with patch("signal_bridge.process_record", side_effect=[(42, "claude", "claude"), (1, "/bin/zsh", "zsh")]), \
+                patch("signal_bridge.subprocess.run", return_value=result):
+            self.assertEqual(terminal_metadata(), {})
+        with patch("signal_bridge.process_record", side_effect=[(42, "/usr/local/bin/codex", "codex"), (1, "/bin/zsh", "zsh")]), \
+                patch("signal_bridge.subprocess.run", return_value=result):
+            self.assertEqual(terminal_metadata("claude"), {})
+
+    def test_claude_configuration_registers_only_claude_events(self):
+        from signal_bridge import CLAUDE_HOOKS
+        result = subprocess.run([sys.executable, str(BRIDGE), "--print-hooks", "--source", "claude", "--data-dir", str(self.data)],
+                                text=True, capture_output=True, env=self.environment, timeout=10)
+        self.assertEqual(result.returncode, 0)
+        hooks = json.loads(result.stdout)["hooks"]
+        self.assertEqual(set(hooks), set(CLAUDE_HOOKS))
+        self.assertEqual(hooks["Notification"][0]["matcher"], "idle_prompt")
+        self.assertTrue(all("--source claude" in groups[0]["hooks"][0]["command"] for groups in hooks.values()))
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

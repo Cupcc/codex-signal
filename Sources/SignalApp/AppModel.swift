@@ -71,7 +71,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var isNavigating = false
     let dataDirectory: URL
     let updater: UpdateController
-    let connection: CodexConnection
+    let connection: HookConnection
+    let claudeConnection: HookConnection
     let launchAtLogin: LaunchAtLoginController
     private var store = SessionStore()
     private var timer: Timer?
@@ -105,10 +106,12 @@ final class AppModel: ObservableObject {
     var unreadCount: Int { sessions.filter(\.unread).count }
     var clearableSessions: [SignalSession] { activeSessions.filter { $0.phase != .running && !$0.pending } }
 
-    init(dataDirectory: URL, demo: Bool, feedbackDuration: Duration = .seconds(2), islandNoticeDuration: Duration = .seconds(6), codexHome: URL = CodexConnection.defaultCodexHome) {
+    init(dataDirectory: URL, demo: Bool, feedbackDuration: Duration = .seconds(2), islandNoticeDuration: Duration = .seconds(6),
+         codexHome: URL = HookAgent.codex.defaultHome(), claudeHome: URL = HookAgent.claude.defaultHome()) {
         self.dataDirectory = dataDirectory
         self.updater = UpdateController(dataDirectory: dataDirectory)
-        self.connection = CodexConnection(dataDirectory: dataDirectory, codexHome: codexHome)
+        self.connection = HookConnection(agent: .codex, dataDirectory: dataDirectory, home: codexHome)
+        self.claudeConnection = HookConnection(agent: .claude, dataDirectory: dataDirectory, home: claudeHome)
         self.launchAtLogin = LaunchAtLoginController()
         self.launchAtLoginEnabled = launchAtLogin.isEnabled
         self.isDemo = demo
@@ -195,7 +198,7 @@ final class AppModel: ObservableObject {
             self.selectedID = candidates.last?.id
             DispatchQueue.main.async { [weak self] in self?.writeSnapshot() }
         }.store(in: &subscriptions)
-        connection.$state.dropFirst().sink { [weak self] _ in
+        connection.$state.dropFirst().merge(with: claudeConnection.$state.dropFirst()).sink { [weak self] _ in
             DispatchQueue.main.async { [weak self] in self?.writeSnapshot() }
         }.store(in: &subscriptions)
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -369,7 +372,10 @@ final class AppModel: ObservableObject {
             } catch { cleanupError = error }
         }
         lastIntake = Date()
-        if !silent && !isDemo { connection.receivedEvent() }
+        if !silent && !isDemo {
+            if batch.contains(where: { $0.1.source.isCodex }) { connection.receivedEvent() }
+            if batch.contains(where: { $0.1.source == .claude }) { claudeConnection.receivedEvent() }
+        }
         for id in expired { speech.cancel(sessionID: id) }
         if changed {
             if let selectedSessionID, !store.sessions.contains(where: { $0.id == selectedID }) {
@@ -577,7 +583,7 @@ final class AppModel: ObservableObject {
         let values: [(String, SessionSource, String, EventKind)] = [
             ("demo-api", .cli, "API 服务", .approval),
             ("demo-atlas", .desktop, "Atlas 网站", .completed),
-            ("demo-design", .cli, "设计系统", .started)
+            ("demo-design", .claude, "设计系统", .started)
         ]
         for (index, value) in values.enumerated() {
             let titles = ["修复登录接口的超时重试", "完善首页布局与移动端适配", "整理按钮组件和交互反馈"]
@@ -591,7 +597,7 @@ final class AppModel: ObservableObject {
     private func refreshRuntimeIfNeeded() {
         guard !isDemo, runtimeTask == nil, Date().timeIntervalSince(lastRuntimeCheck) >= 5 else { return }
         lastRuntimeCheck = Date()
-        let tracked = sessions.filter { !$0.phase.terminal }
+        let tracked = sessions.filter { !$0.phase.terminal && $0.source.isCodex }
         guard !tracked.isEmpty else { return }
         runtimeTask = Task { [weak self] in
             let resolutions = await Task.detached(priority: .utility) { CodexRuntimeStatus.read(sessions: tracked) }.value
@@ -618,7 +624,8 @@ final class AppModel: ObservableObject {
         guard !isDemo, metadataTask == nil,
               Date().timeIntervalSince(lastMetadataCheck) >= 5 else { return }
         lastMetadataCheck = Date()
-        let ids = Set(sessions.map(\.sessionId))
+        // Codex metadata only; Claude Code titles arrive with its hooks.
+        let ids = Set(sessions.filter(\.source.isCodex).map(\.sessionId))
         let unknownIDs = Set(sessions.filter { $0.source == .unknown }.map(\.sessionId))
         guard !ids.isEmpty else { return }
         let previousKey = metadataReadKey
@@ -677,6 +684,8 @@ final class AppModel: ObservableObject {
             "isDemo": isDemo, "status": statusMessage, "isNavigating": isNavigating,
             "connectionStatus": connection.status,
             "connectionHooksPath": connection.installation?.hooksPath as Any? ?? NSNull(),
+            "claudeConnectionStatus": claudeConnection.status,
+            "claudeConnectionHooksPath": claudeConnection.installation?.hooksPath as Any? ?? NSNull(),
             "lastIntake": lastIntake?.timeIntervalSince1970 as Any? ?? NSNull()
         ]
         if let data = try? JSONSerialization.data(withJSONObject: snapshot, options: [.prettyPrinted, .sortedKeys]) {

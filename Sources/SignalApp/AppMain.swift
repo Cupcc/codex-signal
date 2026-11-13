@@ -46,13 +46,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
             return
         }
-        let codexHome: URL
-        if let index = args.firstIndex(of: "--codex-home"), args.indices.contains(index + 1) {
-            codexHome = URL(fileURLWithPath: args[index + 1], isDirectory: true)
-        } else {
-            codexHome = CodexConnection.defaultCodexHome
+        func home(_ option: String, _ agent: HookAgent) -> URL {
+            guard let index = args.firstIndex(of: option), args.indices.contains(index + 1) else { return agent.defaultHome() }
+            return URL(fileURLWithPath: args[index + 1], isDirectory: true)
         }
-        model = AppModel(dataDirectory: directory, demo: demo, codexHome: codexHome)
+        model = AppModel(dataDirectory: directory, demo: demo,
+                         codexHome: home("--codex-home", .codex), claudeHome: home("--claude-home", .claude))
         panel = IslandPanel(model: model)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.title = "◈ Signal"
@@ -69,8 +68,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.show()
         if !demo {
             model.updater.start()
-            // Replay runs must opt in with an isolated Codex home before writing hooks.
+            // Replay runs must opt in with an isolated agent home before writing hooks.
             if !args.contains("--data-dir") || args.contains("--codex-home") { model.connection.configureAfterInstallation() }
+            if !args.contains("--data-dir") || args.contains("--claude-home") { model.claudeConnection.configureAfterInstallation() }
             if model.sessions.isEmpty { model.setExpanded(true) }
         }
         if demo || args.contains("--expanded") { model.setExpanded(true) }
