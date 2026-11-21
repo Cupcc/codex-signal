@@ -45,8 +45,8 @@ final class IslandPanel {
     init(model: AppModel) {
         self.model = model
         hosting = SignalHostingView(rootView: IslandView(model: model, layoutState: layoutState))
-        // The root view lives for the life of the panel, preserving settings,
-        // scroll position and SwiftUI animation identity across mode changes.
+        // The root view lives for the life of the panel, preserving the settings
+        // popover anchor across mode changes.
         hosting.sizingOptions = []
         panel = SignalPanel(contentRect: NSRect(origin: .zero, size: layoutState.layout.expandedSize),
                             styleMask: [.borderless, .nonactivatingPanel],

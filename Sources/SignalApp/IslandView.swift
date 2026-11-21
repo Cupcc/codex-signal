@@ -21,7 +21,7 @@ struct IslandView: View {
         GeometryReader { geometry in
             ZStack(alignment: .top) {
                 // Fixed destination dimensions keep text from reflowing while the
-                // native panel grows. The same root retains scroll/settings state.
+                // native panel grows.
                 expandedContent
                     .frame(width: layout.expandedSize.width, height: layout.expandedSize.height)
                     .opacity(model.expanded ? 1 : 0)
@@ -56,25 +56,31 @@ struct IslandView: View {
     }
 
     private var expandedContent: some View {
-        VStack(spacing: 0) {
+        let sessions = model.visibleSessions
+        // Eight rows plus the toolbar fill the panel even at its maximum height.
+        // Keep short lists measured so the window can animate to their exact height.
+        let longList = sessions.count > 8
+        return VStack(spacing: 0) {
             VStack(spacing: 0) {
                 if !layout.headerUsesNotchSpace { Color.clear.frame(height: layout.topInset) }
                 statusBar
                 toolbar
             }
             .reportExpandedContentHeight()
-            if model.visibleSessions.isEmpty {
+            if longList && !model.expanded {
+                Color.clear.preference(key: ExpandedContentHeightKey.self, value: IslandLayout.maximumContentHeight)
+            } else if sessions.isEmpty {
                 emptyState
                     .fixedSize(horizontal: false, vertical: true)
                     .reportExpandedContentHeight()
             } else {
                 ScrollViewReader { scroll in
                     ScrollView {
-                        LazyVStack(spacing: 8) {
-                            ForEach(model.visibleSessions) { session in
-                                sessionRow(session)
-                                    .id(session.id)
-                                    .transition(.opacity)
+                        Group {
+                            if longList {
+                                LazyVStack(spacing: 8) { sessionRows(sessions) }
+                            } else {
+                                VStack(spacing: 8) { sessionRows(sessions) }
                             }
                         }
                         .padding(.horizontal, 14)
@@ -82,13 +88,15 @@ struct IslandView: View {
                         .reportExpandedContentHeight()
                         .scrollTargetLayout()
                         .animation(motion, value: model.selectedID)
-                        .animation(motion, value: model.visibleSessions.map(\.id))
+                        .animation(motion, value: sessions.map(\.id))
                     }
                     .scrollIndicators(.hidden)
                     .defaultScrollAnchor(.bottom)
                     .scrollPosition(id: $scrollPositionID, anchor: .bottom)
-                    .onChange(of: model.expanded) { _, expanded in
-                        if expanded, let id = model.visibleSessions.last?.id { scroll.scrollTo(id, anchor: .bottom) }
+                    .onChange(of: model.expanded, initial: true) { _, expanded in
+                        if expanded, let id = model.selectedID {
+                            scroll.scrollTo(id, anchor: id == sessions.last?.id ? .bottom : .center)
+                        }
                     }
                     .onChange(of: model.sessionFilter) { _, _ in
                         if let id = model.visibleSessions.last?.id { scroll.scrollTo(id, anchor: .bottom) }
@@ -101,7 +109,7 @@ struct IslandView: View {
                         }
                     }
                     .onChange(of: model.selectedID) { _, id in
-                        if let id {
+                        if model.expanded, let id {
                             withAnimation(motion) {
                                 scroll.scrollTo(id, anchor: id == model.visibleSessions.last?.id ? .bottom : .center)
                             }
@@ -116,6 +124,14 @@ struct IslandView: View {
             if height > 0, layoutState.expandedContentHeight != height {
                 layoutState.expandedContentHeight = height
             }
+        }
+    }
+
+    private func sessionRows(_ sessions: [SignalSession]) -> some View {
+        ForEach(sessions) { session in
+            sessionRow(session)
+                .id(session.id)
+                .transition(.opacity)
         }
     }
 

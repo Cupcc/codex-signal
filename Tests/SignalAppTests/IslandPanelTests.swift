@@ -157,6 +157,29 @@ struct IslandPanelTests {
         }
     }
 
+    @Test func collapsedPanelUnmountsLongSessionListAndRecreatesItOnOpen() async throws {
+        try await withPanel { model, island, window in
+            func hasScrollView(_ view: NSView) -> Bool {
+                view is NSScrollView || view.subviews.contains(where: hasScrollView)
+            }
+            let example = try #require(model.visibleSessions.first)
+            model.sessions = (0..<101).map { index in
+                var session = example
+                session.sessionId = "row-\(index)"
+                return session
+            }
+            let content = try #require(window.contentView)
+            island.show()
+            try await Task.sleep(for: .milliseconds(100))
+            for (step, expanded) in [true, false, true].enumerated() {
+                model.setExpanded(expanded)
+                try await Task.sleep(for: .milliseconds(400))
+                try #require(model.expanded == expanded, "Step \(step) changed panel mode")
+                #expect(hasScrollView(content) == expanded, "Step \(step), frame \(window.frame)")
+            }
+        }
+    }
+
     @Test func refreshAndShowRepairDisplacementWithUnchangedTarget() async throws {
         try await withPanel { _, island, window in
             let expected = window.frame
