@@ -36,6 +36,16 @@ NSHostingView.beginTransaction
 
 两个独立数据目录各放入 132 条合成会话，让旧版和修复版在收起状态下各处理相同的 40 轮重新排序。两者都处理完毕。这组短时输入没有重现旧版长时间运行时的异常增长。长期内存稳定性仍需验证。
 
+## 在 Mac mini 上复核发布包
+
+在 macOS 27.2.1 上，0.8.1 和长列表修复版均通过面板收起过程中的位置检查，但有两个设置浮层用例未通过。快速收起时，记录到的通知顺序如下。
+
+1. `NSPopover.willShowNotification` 到达时，浮层尚无可识别的父窗口，主面板也没有取得键盘焦点。
+2. 浮层挂到主面板后，用户可以立即收起。此时 `willCollapse` 已到达，旧实现记录的浮层数量仍为零。
+3. `NSPopover.didShowNotification` 随后才到达，此时才能从父窗口识别归属。
+
+0.8.2 在显示通知到达时按顺序弱引用浮层，收起时再按当时的父窗口链确认归属，先关闭嵌套帮助，再关闭设置。这样可以覆盖系统尚未发送显示完成通知的时段。[窗口实现](../../Sources/SignalApp/IslandPanel.swift)
+
 ## 下次出现同类问题时
 
 1. 在重启前运行 `pgrep -fl CodexSignal`，核对进程路径、启动参数和数据目录。读取该目录的 `runtime-status.json`，记录 `processID` 和 `expanded` 的值、`sessions` 和 `visibleIDs` 的数量，以及 `inbox` 中待处理的 JSON 文件数。状态快照可能已过时，同时检查原生窗口实际尺寸。

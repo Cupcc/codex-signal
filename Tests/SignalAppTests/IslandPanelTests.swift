@@ -157,6 +157,33 @@ struct IslandPanelTests {
         }
     }
 
+    @Test func collapsingLeavesAnotherWindowsPopoverAttached() async throws {
+        try await withPanel { model, island, _ in
+            island.show()
+            model.setExpanded(true)
+            let other = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+                                 styleMask: [.titled], backing: .buffered, defer: false)
+            other.isReleasedWhenClosed = false
+            other.orderFrontRegardless()
+            defer { other.close() }
+            let anchor = try #require(other.contentView)
+            let popover = NSPopover()
+            let content = NSViewController()
+            content.view = NSView(frame: NSRect(x: 0, y: 0, width: 80, height: 40))
+            popover.contentViewController = content
+            popover.animates = false
+            popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxX)
+            defer { popover.close() }
+            let window = try #require(content.view.window)
+            try #require(window.parent === other)
+            try #require(model.expanded)
+
+            model.setExpanded(false)
+            #expect(popover.isShown)
+            #expect(window.parent === other)
+        }
+    }
+
     @Test func collapsedPanelUnmountsLongSessionListAndRecreatesItOnOpen() async throws {
         try await withPanel { model, island, window in
             func hasScrollView(_ view: NSView) -> Bool {

@@ -40,7 +40,13 @@ final class IslandPanel {
     private var screenID: NSNumber?
     private var targetFrame: NSRect = .zero
     private var frameAnimationID: UUID?
-    private var presentedPopovers: [NSPopover] = []
+
+    private struct TrackedPopover {
+        weak var popover: NSPopover?
+        var belongsToPanel: Bool
+    }
+
+    private var presentedPopovers: [TrackedPopover] = []
 
     init(model: AppModel) {
         self.model = model
@@ -95,20 +101,21 @@ final class IslandPanel {
         Publishers.Merge(NotificationCenter.default.publisher(for: NSPopover.willShowNotification),
                          NotificationCenter.default.publisher(for: NSPopover.didShowNotification))
             .sink { [weak self] notification in
-                guard let self,
-                      let popover = notification.object as? NSPopover,
-                      self.contains(popover.contentViewController?.view.window) || self.contains(NSApp.keyWindow) else { return }
-                // AppKit can start dismissing a transient popover before our
-                // outside-click handler runs. Configure it before that happens.
-                popover.animates = false
-                if !self.presentedPopovers.contains(where: { $0 === popover }) {
-                    self.presentedPopovers.append(popover)
+                guard let self, let popover = notification.object as? NSPopover else { return }
+                // At willShow the popover may not have a parent or a key window yet.
+                let owned = self.contains(popover.contentViewController?.view.window) || self.contains(NSApp.keyWindow)
+                if owned { popover.animates = false }
+                self.presentedPopovers.removeAll { $0.popover == nil }
+                if let index = self.presentedPopovers.firstIndex(where: { $0.popover === popover }) {
+                    if owned { self.presentedPopovers[index].belongsToPanel = true }
+                } else {
+                    self.presentedPopovers.append(TrackedPopover(popover: popover, belongsToPanel: owned))
                 }
             }.store(in: &subscriptions)
         NotificationCenter.default.publisher(for: NSPopover.didCloseNotification)
             .sink { [weak self] notification in
                 guard let self, let popover = notification.object as? NSPopover else { return }
-                self.presentedPopovers.removeAll { $0 === popover }
+                self.presentedPopovers.removeAll { $0.popover == nil || $0.popover === popover }
             }.store(in: &subscriptions)
         NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)
             .sink { [weak self] notification in
@@ -188,7 +195,11 @@ final class IslandPanel {
     private func closePopovers() {
         // Close nested help first, while its settings window is still attached.
         // This runs before expanded changes, for every collapse entry point.
-        for popover in presentedPopovers.reversed() {
+        for entry in presentedPopovers.reversed() {
+            guard let popover = entry.popover else { continue }
+            let parent = popover.contentViewController?.view.window?.parent
+            guard parent.map({ contains($0) }) ?? entry.belongsToPanel else { continue }
+            popover.animates = false
             popover.close()
         }
     }
