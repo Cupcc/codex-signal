@@ -113,7 +113,7 @@ python3 scripts/verify_runtime.py --check-speech
 
 ## 构建发布包
 
-版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.8.1（Build 13）**，“关于 Codex Signal”中可查看。
+版本由 [VERSION](VERSION) 和 [BUILD_NUMBER](BUILD_NUMBER) 统一管理。当前为 **0.8.2（Build 14）**，“关于 Codex Signal”中可查看。
 
 ```sh
 ./script/release.sh
@@ -125,8 +125,8 @@ python3 scripts/verify_runtime.py --check-speech
 
 ```text
 dist/releases/
-├── CodexSignal-0.8.1-arm64.dmg
-├── CodexSignal-0.8.1-arm64.zip
+├── CodexSignal-0.8.2-arm64.dmg
+├── CodexSignal-0.8.2-arm64.zip
 └── SHA256SUMS.txt
 ```
 
