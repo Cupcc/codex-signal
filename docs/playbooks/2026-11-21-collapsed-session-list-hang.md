@@ -46,6 +46,12 @@ NSHostingView.beginTransaction
 
 0.8.2 在显示通知到达时按顺序弱引用浮层，收起时再按当时的父窗口链确认归属，先关闭嵌套帮助，再关闭设置。这样可以覆盖系统尚未发送显示完成通知的时段。[窗口实现](../../Sources/SignalApp/IslandPanel.swift)
 
+### 0.8.2 发布验收结果
+
+- 在 Mac mini 上使用随 Command Line Tools 安装的 macOS 26.5 SDK 构建，运行环境为 macOS 27.2.1。默认 27.2 SDK 的 SwiftUI `@State` 宏在这台机器上缺少编译插件。窗口和布局两个套件，加上 `AppModelTests/openingAndFilteringSelectNewestAtBottom`，共 20 项通过。其中包含 45 组收起时序、嵌套浮层、其他窗口的浮层和 101 条会话的列表。
+- 从 ZIP 解压并用隔离数据目录启动正式包，面板收起时恢复了 101 条合成会话，随后处理新事件，可见会话增至 102 条，收件箱排空。挂载 DMG 后确认“应用程序”快捷方式指向 `/Applications`，两种发布包内的应用内容一致。均通过 arm64 架构、ad-hoc 签名完整性和版本 0.8.2（Build 14）检查。版本号取自最终包，设置页中的版本文字未做目视确认。
+- 发布后从 GitHub 重新下载 ZIP 和 DMG，两份 SHA-256 均与 Mac mini 生成的清单一致。按 0.8.1 更新器的请求方式访问最新版清单，得到 HTTP 200 和 0.8.2 清单。[正式发布](https://github.com/Cupcc/codex-signal/releases/tag/v0.8.2)
+
 ## 下次出现同类问题时
 
 1. 在重启前运行 `pgrep -fl CodexSignal`，核对进程路径、启动参数和数据目录。读取该目录的 `runtime-status.json`，记录 `processID` 和 `expanded` 的值、`sessions` 和 `visibleIDs` 的数量，以及 `inbox` 中待处理的 JSON 文件数。状态快照可能已过时，同时检查原生窗口实际尺寸。
